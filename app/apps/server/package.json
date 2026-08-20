@@ -1,0 +1,20 @@
+{
+  "name": "@rs/server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "partykit dev",
+    "deploy": "partykit deploy",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@rs/game-data": "workspace:*",
+    "@rs/rules-engine": "workspace:*",
+    "@rs/shared": "workspace:*",
+    "partykit": "^0.0.110"
+  },
+  "devDependencies": {
+    "typescript": "^5.8.3"
+  }
+}

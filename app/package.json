@@ -1,0 +1,24 @@
+{
+  "name": "requirement-storm",
+  "private": true,
+  "version": "0.1.0",
+  "description": "《需求风暴》Web/Steam 联机卡牌游戏",
+  "scripts": {
+    "build": "pnpm -r run build",
+    "test": "pnpm --filter @rs/rules-engine test",
+    "typecheck": "pnpm -r run typecheck",
+    "lint": "eslint .",
+    "validate:data": "pnpm --filter @rs/game-data validate",
+    "dev:web": "pnpm --filter @rs/web dev",
+    "dev:server": "pnpm --filter @rs/server dev"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.28.0",
+    "eslint": "^9.28.0",
+    "typescript": "^5.8.3",
+    "typescript-eslint": "^8.33.1"
+  }
+}

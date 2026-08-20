@@ -1,0 +1,8 @@
+[
+  { "id": "O-01", "name": "抢镜狂魔", "conditionText": "独揽 2 次里程碑突破", "reward": 4 },
+  { "id": "O-02", "name": "救火队长", "conditionText": "全局累计清除 ≥5 Bug", "reward": 3 },
+  { "id": "O-03", "name": "逆风翻盘", "conditionText": "曾垫底却最终 MVP", "reward": 6 },
+  { "id": "O-04", "name": "零债交付", "conditionText": "结束时无技术债且参与 ≥2 次突破", "reward": 4 },
+  { "id": "O-05", "name": "团队基石", "conditionText": "打出 ≥4 张协作卡（不含 C-12~14）", "reward": 3 },
+  { "id": "O-06", "name": "效率之王", "conditionText": "从未加班/通宵且参与 ≥3 次突破", "reward": 5 }
+]

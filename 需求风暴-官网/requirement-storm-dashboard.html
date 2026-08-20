@@ -1,0 +1,315 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>需求风暴 · 卡牌管理面板 v1.2</title>
+<meta name="description" content="《需求风暴》v1.2 牌库数据面板：行动牌、事件牌、需求卡、隐藏 OKR 总览，支持筛选排序与图表分析。">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<link rel="stylesheet" href="shared/ui.css?v=pacman-7">
+</head>
+<body class="has-site-nav">
+
+<header class="site-nav">
+  <a class="site-brand" href="index.html">👾 需求风暴</a>
+  <nav class="site-links">
+    <a href="index.html">首页</a>
+    <a href="需求风暴规则.html">规则手册</a>
+    <a href="requirement-storm-dashboard.html">卡牌管理</a>
+  </nav>
+</header>
+
+<div class="wrap-wide">
+  <header class="page-top">
+    <div class="brand">
+      <h1>🃏 需求风暴 · 卡牌管理面板 <span class="hl">v1.2</span></h1>
+      <p>实测修订版 · 行动牌 42 张 / 事件牌 9 张 / 需求卡 6 张 / 隐藏 OKR 6 张</p>
+    </div>
+  </header>
+
+  <div class="chips">
+    <span class="chip chip-static">每 Turn 工时 <b>40</b></span>
+    <span class="chip chip-static">需求总进度 <b>200</b></span>
+    <span class="chip chip-static">里程碑 <b>40 / 100 / 160 / 200</b></span>
+    <span class="chip chip-static">考核季 <b>每 3 Round</b></span>
+    <span class="chip chip-static">手牌上限 <b>5</b></span>
+    <span class="chip chip-static">连续 Sprint <b>默认 2 局</b></span>
+  </div>
+
+  <div class="kpis" id="kpis"></div>
+
+  <nav class="tabs" id="tabs">
+    <button data-tab="overview" class="active">📊 总览</button>
+    <button data-tab="action">🛠️ 行动牌</button>
+    <button data-tab="event">🌩️ 事件牌</button>
+    <button data-tab="req">📋 需求卡</button>
+    <button data-tab="okr">📈 隐藏 OKR</button>
+    <button data-tab="rules">🎯 里程碑 & 规则</button>
+  </nav>
+
+  <section data-view="overview">
+    <div class="overview-decks" id="overviewDecks"></div>
+
+    <div class="panel overview-panel">
+      <h2>牌库构成</h2>
+      <div class="overview-charts">
+        <div class="chart-card">
+          <h3 class="chart-card-title">各卡组张数</h3>
+          <div id="chartDeck"></div>
+        </div>
+        <div class="chart-card">
+          <h3 class="chart-card-title">稀有度分布</h3>
+          <div id="chartRarity"></div>
+        </div>
+      </div>
+      <p class="note">稀有度配比目标：普通 N ≈ 70%、稀有 R ≈ 25%、史诗 E ≈ 5%。互动卡 C-12～C-14 均为季限 1。</p>
+    </div>
+
+    <div class="panel overview-panel">
+      <h2>技能卡效率</h2>
+      <p class="lead overview-lead">工时成本 vs 需求进度增益，按性价比排序。</p>
+      <div class="skill-eff-head" aria-hidden="true">
+        <span class="skill-eff-col skill-eff-col-id">编号</span>
+        <span class="skill-eff-col skill-eff-col-name">名称</span>
+        <span class="skill-eff-col skill-eff-col-cost">工时</span>
+        <span class="skill-eff-col skill-eff-col-prog">进度</span>
+        <span class="skill-eff-col skill-eff-col-ratio">效率</span>
+      </div>
+      <div id="chartCost" class="skill-eff-list"></div>
+      <p class="note">效率 = 进度增益 ÷ 工时成本。柱块长度按工时比例缩放（上限 24）。Top 3 性价比用吃豆黄高亮。</p>
+    </div>
+  </section>
+
+  <section data-view="action" hidden>
+    <div class="panel">
+      <h2>行动牌库 <span class="count-pill" id="actCount"></span></h2>
+      <div class="controls">
+        <input type="text" id="search" placeholder="搜索编号 / 名称 / 效果，例如：暗标、Bug、绩效…">
+      </div>
+      <div class="controls" id="catFilters"></div>
+      <div class="controls" id="rarFilters"></div>
+      <table>
+        <thead><tr>
+          <th data-sort="id">编号</th><th data-sort="name">名称</th><th data-sort="cat">卡组</th>
+          <th data-sort="rarity">稀有</th><th data-sort="cost">工时</th><th>效果</th><th data-sort="count">张数</th>
+        </tr></thead>
+        <tbody id="actBody"></tbody>
+      </table>
+      <p class="note">点击表头可排序。互动卡 C-12～C-14（甩锅 / 抢功 / 背刺反制）为半合作博弈核心，响应顺序：暗标优先权 → C-13 → C-14 → 结算绩效。</p>
+    </div>
+  </section>
+
+  <section data-view="event" hidden><div class="panel"><h2>事件牌库（9 张，每种 1 张）</h2><table><thead><tr><th>编号</th><th>名称</th><th>触发</th><th>效果</th></tr></thead><tbody id="evtBody"></tbody></table><p class="note">每 Round 开始翻 1 张结算；E-09 合规审查可被需求卡 R-02 调用。</p></div></section>
+
+  <section data-view="req" hidden><div class="panel"><h2>需求卡池（6 张 · 开局随机抽 1）</h2><table><thead><tr><th>卡号</th><th>需求 / 难度</th><th>自带机制</th><th>进度触发</th></tr></thead><tbody id="reqBody"></tbody></table><p class="note">所有需求卡统一总进度 200、里程碑 40/100/160/200（2 人局减半）；差异只在自带机制与触发点。</p></div></section>
+
+  <section data-view="okr" hidden><div class="panel"><h2>隐藏 OKR 卡（6 张，开局每人暗抽 1）</h2><table><thead><tr><th>编号</th><th>OKR 名称</th><th>达成条件</th><th>奖励</th></tr></thead><tbody id="okrBody"></tbody></table><p class="note">总绩效结算时亮出；连续 Sprint 长局中 OKR 跨 Sprint 持续有效。</p></div></section>
+
+  <section data-view="rules" hidden>
+    <div class="panel"><h2>里程碑绩效表（所有需求卡通用）</h2><table><thead><tr><th>里程碑</th><th>阈值</th><th>名称</th><th>突破者绩效</th><th>在场协作者</th></tr></thead><tbody id="mileBody"></tbody></table></div>
+    <div class="panel"><h2>工时上限速查</h2><table><thead><tr><th>增益组合</th><th>工时上限</th></tr></thead><tbody id="capBody"></tbody></table>
+      <p class="note">加班（基础）：预算外最多透支 8（上限 48），动用即 -1 绩效 + 留 1 技术债。加成结算顺序：固定减免 → 百分比 → 减半，逐步向上取整，最低 1 工时。</p>
+    </div>
+    <div class="panel"><h2>暗标冲刺规则（v1.2 · FIX-01）</h2>
+      <ul class="muted">
+        <li>触发取二者先到：进入冲刺区（距下一里程碑 ≤15）或跨线瞬间补开，每里程碑仅 1 次。</li>
+        <li>秘密暗押 0–8 工时，最高者取得突破优先权（绩效归优先权持有者，跨线者退为在场协作者）；平局则跨线者优先。</li>
+        <li>所有押注工时立即消耗，无论是否抢到。长局可选将押注上限由 8 降为 6。</li>
+      </ul>
+    </div>
+  </section>
+
+  <p class="note">数据来源：《需求风暴》卡牌原型清单 v1.2（实测修订版）。本面板为离线静态工具，修改卡表后需同步更新本文件中的数据数组。</p>
+</div>
+
+<script src="shared/nav.js?v=pacman-7"></script>
+<script>
+const RAR = {N:'普通',R:'稀有',E:'史诗'};
+const actionCards=[
+  {id:'S-01',name:'写代码',cat:'技能',rarity:'N',cost:16,prog:6,effect:'需求 +6',count:4},
+  {id:'S-02',name:'画原型',cat:'技能',rarity:'N',cost:8,prog:3,effect:'需求 +3，本 Turn 下一张技能卡 -4 工时',count:3},
+  {id:'S-03',name:'做测试',cat:'技能',rarity:'N',cost:8,prog:2,effect:'需求 +2，清除 1 个 Bug',count:3},
+  {id:'S-04',name:'需求拆解',cat:'技能',rarity:'N',cost:4,prog:2,effect:'需求 +2，抽 1 张牌',count:2},
+  {id:'S-05',name:'灰度发布',cat:'技能',rarity:'N',cost:8,prog:4,effect:'需求 +4，生成 1 个 Bug',count:2},
+  {id:'S-06',name:'性能优化',cat:'技能',rarity:'R',cost:12,prog:4,effect:'需求 +4，清除 2 个 Bug',count:2},
+  {id:'S-07',name:'攻坚重构',cat:'技能',rarity:'R',cost:24,prog:10,effect:'需求 +10（单卡最高产出）',count:2},
+  {id:'S-08',name:'紧急修复',cat:'技能',rarity:'N',cost:8,prog:2,effect:'需求 +2，移除自己身上 1 个负面状态',count:2},
+  {id:'B-01',name:'心流状态',cat:'加成',rarity:'R',cost:0,prog:0,effect:'本 Turn 所有技能卡工时 -25%（向上取整）',count:2},
+  {id:'B-02',name:'咖啡续命',cat:'加成',rarity:'N',cost:0,prog:0,effect:'本 Turn 立即 +8 工时（临时增益，不计加班惩罚）',count:2},
+  {id:'B-03',name:'复用轮子',cat:'加成',rarity:'N',cost:4,prog:0,effect:'本 Turn 下一张技能卡工时减半（向上取整）',count:2},
+  {id:'B-04',name:'通宵赶工',cat:'加成',rarity:'N',cost:0,prog:0,effect:'加班透支上限提至 16；结算 -2 绩效 + 2 技术债',count:1},
+  {id:'B-05',name:'工具升级',cat:'加成',rarity:'E',cost:8,prog:0,effect:'本考核季内每张技能卡额外 +1 进度（每局限 1 次）',count:1},
+  {id:'C-01',name:'需求评审',cat:'协作',rarity:'N',cost:6,prog:0,effect:'全员各 +1 进度，自己 +2 绩效（每考核季限 1 次）',count:2},
+  {id:'C-02',name:'知识共享',cat:'协作',rarity:'N',cost:4,prog:0,effect:'抽 2 张，选 1 张交给任意玩家',count:2},
+  {id:'C-03',name:'站会对齐',cat:'协作',rarity:'N',cost:0,prog:0,effect:'全员下个 Turn +4 工时',count:2},
+  {id:'C-04',name:'带新人',cat:'协作',rarity:'N',cost:8,prog:0,effect:'指定 1 名玩家抽 1 张，自己 +1 绩效',count:1},
+  {id:'C-05',name:'技术调研',cat:'协作',rarity:'N',cost:4,prog:0,effect:'查看抽牌堆顶 3 张，留 1 张其余放回底部',count:2},
+  {id:'C-06',name:'邀功抢镜',cat:'协作',rarity:'R',cost:4,prog:0,effect:'复制相邻玩家最近一次突破的协作者分值 +1 绩效（每局限 1 次）',count:1},
+  {id:'C-07',name:'跨组支援',cat:'协作',rarity:'R',cost:8,prog:0,effect:'选 1 名玩家本 Turn 合并工时一次；进度归技能卡者，触发里程碑则绩效双人均分',count:1},
+  {id:'C-12',name:'🫳 甩锅',cat:'互动',rarity:'R',cost:8,prog:0,effect:'将自己 1 个个人技术债 / Bug 转移给指定玩家（公共债不可甩，季限 1）',count:1},
+  {id:'C-13',name:'🏷️ 抢功',cat:'互动',rarity:'R',cost:0,prog:0,effect:'他人跨里程碑结算瞬间打出，蹭取在场协作者份额；若本 Round 未加过进度则改截取突破者 1 绩效（季限 1）',count:1},
+  {id:'C-14',name:'🛡️ 背刺反制',cat:'互动',rarity:'R',cost:0,prog:0,effect:'抵消一次针对你的互动卡，并令出牌者 -1 绩效（季限 1）',count:1}
+];
+const events=[
+  ['E-01','需求变更','翻开即结算','进度条 -10，全员弃 1 张手牌'],
+  ['E-02','线上故障','翻开者承担','翻开者本 Turn -16 工时救火'],
+  ['E-03','老板加塞','独立轨道','新增独立临时需求轨道（20 进度，不计主进度），最先完成者 +3 绩效'],
+  ['E-04','团建放松','翻开即结算','全员下个 Turn +8 工时'],
+  ['E-05','竞品上线','持续本 Round','本 Round 内仅第一次被突破的里程碑绩效翻倍；跨多级只翻倍最低一级'],
+  ['E-06','突击检查','翻开即结算','手牌 >3 的玩家各弃 1 张'],
+  ['E-07','需求砍半','翻开即结算','总目标 -20，所有未达成里程碑阈值同步各 -20'],
+  ['E-08','裁员风波','持续 1 Round','当前绩效最低者跳过下个 Turn 的执行阶段'],
+  ['E-09','合规审查','翻开即结算 / R-02 调用','每个未清除 Bug 令需求 -3；若无 Bug 则全员 +1 绩效']
+];
+const reqs=[
+  ['R-01','会员订阅系统 ★','无额外修正（平衡基准 / 新手首选）','首次跨 M2(100) 翻 1 张「隐藏风险」事件'],
+  ['R-02','支付结算中台 ★★★','技术债 -3 进度（通用 -2）；做测试额外 +1','仅跨 M2 / M4 各结算 1 次 E-09'],
+  ['R-03','AI 推荐引擎 ★★','每季掷 1d6：1–3 → -6，4–6 → +6','跨 M2 全员抽 1；跨 M3 本 Round 测试/优化类各 +2'],
+  ['R-04','大促活动页 ★★★','硬截止：第 5 Round 未跨 M3 全员 -3 绩效','跨 M1 起冲刺：技能 +1 进度，事件负面 ×1.5'],
+  ['R-05','跨端即时通讯 ★★','单人纯技能 -1 进度/张（每 Turn 封顶 2）；协作 C +1','每跨里程碑该 Round 协作者 +1 绩效且需求 +2'],
+  ['R-06','数据看板重构 ★★★','开局 3 公共技术债；清 1 Bug +1 进度并移除 1 公共债','跨 M2 结算债务：≥3 全员 -2，<3 全员 +1 绩效']
+];
+const okrs=[
+  ['O-01','抢镜狂魔','独揽 2 次里程碑突破','+4 绩效'],
+  ['O-02','救火队长','全局累计清除 ≥5 个 Bug','+3 绩效'],
+  ['O-03','逆风翻盘','曾某 Sprint/季垫底却最终夺 MVP','+6 绩效'],
+  ['O-04','零债交付','结束时无技术债且参与 ≥2 次突破','+4 绩效'],
+  ['O-05','团队基石','全局打出 ≥4 张协作卡（不含互动卡）','+3 绩效'],
+  ['O-06','效率之王','全局从未加班/通宵且参与 ≥3 次突破','+5 绩效']
+];
+const miles=[['M1','40','MVP 雏形','+3','+1'],['M2','100','核心功能','+4','+1'],['M3','160','体验打磨','+5','+2'],['M4','200','正式上线','+8','+3']];
+const caps=[['基础（无增益）','40'],['仅 B-02（咖啡 +8）','48'],['仅基础加班（+8）','48'],['仅 B-04（通宵 +16）','56'],['B-02 + 基础加班','56'],['B-02 + B-04','64']];
+
+const $=s=>document.querySelector(s);
+const esc=s=>String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+const sum=(a,f)=>a.reduce((t,x)=>t+f(x),0);
+const RAR_COLOR={N:'var(--norm)',R:'var(--rare)',E:'var(--epic)'};
+const CAT_COLOR={'技能':'var(--accent)','加成':'var(--accent2)','协作':'var(--warn)','互动':'var(--danger)'};
+
+function renderKPIs(){
+  const totalAction=sum(actionCards,c=>c.count);
+  const types=actionCards.length+events.length+reqs.length+okrs.length;
+  const k=[
+    {v:totalAction,l:'行动牌总张数',c:'acc'},
+    {v:actionCards.length,l:'行动牌种类'},
+    {v:9,l:'事件牌'},{v:6,l:'需求卡',c:'acc2'},{v:6,l:'隐藏 OKR'},
+    {v:types,l:'卡牌种类合计',c:'warn'}
+  ];
+  $('#kpis').innerHTML=k.map(x=>`<div class="kpi${x.c?' kpi--'+x.c:''}"><span class="kpi-value">${x.v}</span><span class="kpi-label">${esc(x.l)}</span></div>`).join('');
+}
+function renderOverviewDecks(){
+  const totalAction=sum(actionCards,c=>c.count);
+  const decks=[
+    {name:'行动牌',count:totalAction,kinds:actionCards.length,color:'var(--accent)',accent:'deck-card--action'},
+    {name:'事件牌',count:9,kinds:events.length,color:'var(--danger)',accent:'deck-card--event'},
+    {name:'需求卡',count:6,kinds:reqs.length,color:'var(--accent2)',accent:'deck-card--req'},
+    {name:'隐藏 OKR',count:6,kinds:okrs.length,color:'var(--epic)',accent:'deck-card--okr'}
+  ];
+  const grand=decks.reduce((t,d)=>t+d.count,0);
+  $('#overviewDecks').innerHTML=decks.map(d=>{
+    const pct=Math.round(d.count/grand*100);
+    return `<div class="deck-card ${d.accent}" style="--deck-color:${d.color}">
+      <span class="deck-card-name">${esc(d.name)}</span>
+      <span class="deck-card-count">${d.count}</span>
+      <span class="deck-card-meta">${d.kinds} 种 · 占 ${pct}%</span>
+      <span class="deck-card-bar"><span class="deck-card-fill" style="width:${pct}%"></span></span>
+    </div>`;
+  }).join('');
+}
+
+function statBar(rows,opts={}){
+  const {showPct=false,total=null,targetPct=null}=opts;
+  const max=Math.max(...rows.map(r=>r.value),1);
+  const denom=total||max;
+  return rows.map(r=>{
+    const pct=Math.round(r.value/denom*100);
+    let delta='';
+    if(targetPct&&targetPct[r.key]!=null){
+      const diff=pct-targetPct[r.key];
+      const cls=Math.abs(diff)<=3?'stat-delta stat-delta--ok':'stat-delta stat-delta--warn';
+      delta=`<span class="${cls}">${diff>=0?'+':''}${diff}%</span>`;
+    }
+    const meta=showPct
+      ? `<span class="stat-bar-val">${r.value}</span><span class="stat-bar-pct">(${pct}%)</span>${delta}`
+      : `<span class="stat-bar-val">${r.value}</span>${delta}`;
+    return `<div class="stat-bar">
+      <span class="stat-bar-label">${esc(r.label)}</span>
+      <span class="stat-bar-track"><span class="stat-bar-fill" style="width:${r.value/max*100}%;background:${r.color}"></span></span>
+      <span class="stat-bar-meta">${meta}</span>
+    </div>`;
+  }).join('');
+}
+
+function renderSkillEfficiency(){
+  const skills=actionCards
+    .filter(c=>c.cat==='技能'&&c.cost>0)
+    .map(c=>({...c,eff:+(c.prog/c.cost).toFixed(2)}))
+    .sort((a,b)=>b.eff-a.eff);
+  const maxCost=24;
+  $('#chartCost').innerHTML=skills.map((c,i)=>{
+    const top=i<3?' is-top':'';
+    const blocks=Math.max(1,Math.round(c.cost/4));
+    const blockHtml=Array.from({length:blocks},()=>'<span class="skill-eff-block"></span>').join('');
+    return `<div class="skill-eff-row${top}">
+      <span class="skill-eff-col skill-eff-col-id"><b>${c.id}</b></span>
+      <span class="skill-eff-col skill-eff-col-name">${esc(c.name)}</span>
+      <span class="skill-eff-col skill-eff-col-cost" title="${c.cost} 工时"><span class="skill-eff-blocks" style="--cost-pct:${c.cost/maxCost*100}%">${blockHtml}</span><span class="skill-eff-cost-num">${c.cost}</span></span>
+      <span class="skill-eff-col skill-eff-col-prog">+${c.prog}</span>
+      <span class="skill-eff-col skill-eff-col-ratio">${c.eff}</span>
+    </div>`;
+  }).join('');
+}
+
+function renderCharts(){
+  const cats=['技能','加成','协作','互动'];
+  const totalAction=sum(actionCards,c=>c.count);
+  $('#chartDeck').innerHTML=statBar(
+    cats.map(c=>({label:c,value:sum(actionCards.filter(x=>x.cat===c),x=>x.count),color:CAT_COLOR[c]})),
+    {showPct:true,total:totalAction}
+  );
+  const RAR_TARGET={N:70,R:25,E:5};
+  $('#chartRarity').innerHTML=statBar(
+    ['N','R','E'].map(r=>({key:r,label:RAR[r],value:sum(actionCards.filter(x=>x.rarity===r),x=>x.count),color:RAR_COLOR[r]})),
+    {showPct:true,total:totalAction,targetPct:RAR_TARGET}
+  );
+  renderSkillEfficiency();
+}
+
+let state={q:'',cat:'全部',rar:'全部',sortKey:'id',sortDir:1};
+function renderFilters(){
+  const cats=['全部','技能','加成','协作','互动'];
+  $('#catFilters').innerHTML='<span class="filter-label muted">卡组</span>'+cats.map(c=>`<span class="filterbtn ${state.cat===c?'active':''}" data-cat="${c}">${c}</span>`).join('');
+  const rars=['全部','N','R','E'];
+  $('#rarFilters').innerHTML='<span class="filter-label muted">稀有度</span>'+rars.map(r=>`<span class="filterbtn ${state.rar===r?'active':''}" data-rar="${r}">${r==='全部'?'全部':RAR[r]}</span>`).join('');
+}
+function renderActions(){
+  let rows=actionCards.filter(c=>{
+    const q=state.q.trim().toLowerCase();
+    const hitQ=!q||[c.id,c.name,c.effect].join(' ').toLowerCase().includes(q);
+    const hitC=state.cat==='全部'||c.cat===state.cat;
+    const hitR=state.rar==='全部'||c.rarity===state.rar;
+    return hitQ&&hitC&&hitR;
+  });
+  const k=state.sortKey;
+  rows.sort((a,b)=>{let x=a[k],y=b[k];if(typeof x==='string'){x=x.toLowerCase();y=y.toLowerCase();}return (x>y?1:x<y?-1:0)*state.sortDir;});
+  $('#actCount').textContent=rows.length+' 种 / '+sum(rows,r=>r.count)+' 张';
+  $('#actBody').innerHTML=rows.map(c=>`<tr><td><b>${c.id}</b></td><td>${esc(c.name)}</td><td><span class="tag" style="border-color:${CAT_COLOR[c.cat]};color:${CAT_COLOR[c.cat]}">${c.cat}</span></td><td><span class="badge b-${c.rarity}">${RAR[c.rarity]}</span></td><td>${c.cost}</td><td>${esc(c.effect)}</td><td>${c.count}</td></tr>`).join('')||'<tr><td colspan=7 class="muted">无匹配结果</td></tr>';
+}
+function fillStatic(){
+  $('#evtBody').innerHTML=events.map(r=>`<tr><td><b>${r[0]}</b></td><td>${esc(r[1])}</td><td>${esc(r[2])}</td><td>${esc(r[3])}</td></tr>`).join('');
+  $('#reqBody').innerHTML=reqs.map(r=>`<tr><td><b>${r[0]}</b></td><td>${esc(r[1])}</td><td>${esc(r[2])}</td><td>${esc(r[3])}</td></tr>`).join('');
+  $('#okrBody').innerHTML=okrs.map(r=>`<tr><td><b>${r[0]}</b></td><td>${esc(r[1])}</td><td>${esc(r[2])}</td><td class="hl">${esc(r[3])}</td></tr>`).join('');
+  $('#mileBody').innerHTML=miles.map(r=>`<tr><td><b>${r[0]}</b></td><td>${r[1]}</td><td>${esc(r[2])}</td><td class="hl">${r[3]}</td><td>${r[4]}</td></tr>`).join('');
+  $('#capBody').innerHTML=caps.map(r=>`<tr><td>${esc(r[0])}</td><td><b>${r[1]}</b></td></tr>`).join('');
+}
+
+$('#tabs').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;document.querySelectorAll('#tabs button').forEach(x=>x.classList.remove('active'));b.classList.add('active');const t=b.dataset.tab;document.querySelectorAll('section[data-view]').forEach(s=>s.hidden=s.dataset.view!==t);});
+$('#search').addEventListener('input',e=>{state.q=e.target.value;renderActions();});
+$('#catFilters').addEventListener('click',e=>{const el=e.target.closest('[data-cat]');if(!el)return;state.cat=el.dataset.cat;renderFilters();renderActions();});
+$('#rarFilters').addEventListener('click',e=>{const el=e.target.closest('[data-rar]');if(!el)return;state.rar=el.dataset.rar;renderFilters();renderActions();});
+document.querySelector('section[data-view="action"]').addEventListener('click',e=>{const th=e.target.closest('th[data-sort]');if(!th)return;const k=th.dataset.sort;state.sortDir=state.sortKey===k?-state.sortDir:1;state.sortKey=k;renderActions();});
+
+renderKPIs();renderOverviewDecks();renderCharts();renderFilters();renderActions();fillStatic();
+</script>
+</body>
+</html>

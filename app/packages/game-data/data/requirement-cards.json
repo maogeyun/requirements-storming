@@ -1,0 +1,8 @@
+[
+  { "id": "R-01", "name": "会员订阅系统", "difficulty": 1, "mechanismText": "无额外修正（平衡基准）", "triggerText": "首次跨 M2 翻 1 张隐藏风险事件" },
+  { "id": "R-02", "name": "支付结算中台", "difficulty": 3, "mechanismText": "技术债 -3 进度；S-03 额外 +1 进度", "triggerText": "跨 M2/M4 各结算 E-09" },
+  { "id": "R-03", "name": "AI 推荐引擎", "difficulty": 2, "mechanismText": "每考核季 1d6：1-3 → -6；4-6 → +6", "triggerText": "跨 M2 全员抽 1；跨 M3 测试/优化卡 +2" },
+  { "id": "R-04", "name": "大促活动页", "difficulty": 3, "mechanismText": "R5 未跨 M3 全员 -3 绩效", "triggerText": "跨 M1 起技能 +1，事件负面 ×1.5" },
+  { "id": "R-05", "name": "跨端即时通讯", "difficulty": 2, "mechanismText": "单人纯技能 -1/张（Turn 最多 -2）；协作 C +1", "triggerText": "每跨里程碑协作者 +1 绩效且 +2 进度" },
+  { "id": "R-06", "name": "数据看板重构", "difficulty": 3, "mechanismText": "开局 3 公共技术债", "triggerText": "跨 M2 债务结算 ≥3 全员 -2 否则 +1" }
+]

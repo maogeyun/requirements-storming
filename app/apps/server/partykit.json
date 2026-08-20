@@ -1,0 +1,5 @@
+{
+  "name": "requirement-storm",
+  "main": "src/room.ts",
+  "compatibilityDate": "2024-11-01"
+}

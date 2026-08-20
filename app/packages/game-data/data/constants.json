@@ -1,0 +1,40 @@
+{
+  "version": "1.2",
+  "baseWorkHoursPerTurn": 40,
+  "handLimit": 5,
+  "roundsPerSeason": 3,
+  "defaultSprintCount": 2,
+  "totalProgressStandard": 200,
+  "totalProgressTwoPlayer": 100,
+  "sprintZoneDistance": 15,
+  "sprintZoneDistanceTwoPlayer": 15,
+  "darkBidMax": 8,
+  "darkBidMaxReduced": 6,
+  "darkBidTotalCostThreshold": 24,
+  "workHourCaps": {
+    "base": 40,
+    "coffeeOnly": 48,
+    "overtimeOnly": 48,
+    "allNighterOnly": 56,
+    "coffeeAndOvertime": 56,
+    "coffeeAndAllNighter": 64
+  },
+  "milestonesStandard": [
+    { "id": "M1", "threshold": 40, "name": "MVP 雏形", "breakerPerformance": 3, "collaboratorPerformance": 1 },
+    { "id": "M2", "threshold": 100, "name": "核心功能", "breakerPerformance": 4, "collaboratorPerformance": 1 },
+    { "id": "M3", "threshold": 160, "name": "体验打磨", "breakerPerformance": 5, "collaboratorPerformance": 2 },
+    { "id": "M4", "threshold": 200, "name": "正式上线", "breakerPerformance": 8, "collaboratorPerformance": 3 }
+  ],
+  "milestonesTwoPlayer": [
+    { "id": "M1", "threshold": 20, "name": "MVP 雏形", "breakerPerformance": 3, "collaboratorPerformance": 1 },
+    { "id": "M2", "threshold": 50, "name": "核心功能", "breakerPerformance": 4, "collaboratorPerformance": 1 },
+    { "id": "M3", "threshold": 80, "name": "体验打磨", "breakerPerformance": 5, "collaboratorPerformance": 2 },
+    { "id": "M4", "threshold": 100, "name": "正式上线", "breakerPerformance": 8, "collaboratorPerformance": 3 }
+  ],
+  "p3Milestones": [
+    { "id": "M1", "threshold": 48, "name": "MVP 雏形", "breakerPerformance": 3, "collaboratorPerformance": 1 },
+    { "id": "M2", "threshold": 120, "name": "核心功能", "breakerPerformance": 4, "collaboratorPerformance": 1 },
+    { "id": "M3", "threshold": 192, "name": "体验打磨", "breakerPerformance": 5, "collaboratorPerformance": 2 },
+    { "id": "M4", "threshold": 240, "name": "正式上线", "breakerPerformance": 8, "collaboratorPerformance": 3 }
+  ]
+}

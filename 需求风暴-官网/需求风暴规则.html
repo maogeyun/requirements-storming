@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>需求风暴 · 规则手册 v1.2</title>
+<meta name="description" content="《需求风暴》完整游戏规则：工时、绩效、暗标冲刺、卡牌体系、绩效结算与隐藏 OKR。含交互模拟器与 FAQ。">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<link rel="stylesheet" href="shared/ui.css?v=pacman-7">
+</head>
+<body class="has-site-nav">
+
+<header class="site-nav">
+  <a class="site-brand" href="index.html">👾 需求风暴</a>
+  <nav class="site-links">
+    <a href="index.html">首页</a>
+    <a href="需求风暴规则.html">规则手册</a>
+    <a href="requirement-storm-dashboard.html">卡牌管理</a>
+  </nav>
+</header>
+
+<nav class="page-nav"><div class="nav-inner">
+  <a href="#intro">一句话理解</a>
+  <a href="#start">快速上手</a>
+  <a href="#res">核心资源</a>
+  <a href="#flow">游戏流程</a>
+  <a href="#bid">暗标冲刺</a>
+  <a href="#cards">卡牌体系</a>
+  <a href="#calc">工时计算器</a>
+  <a href="#sim">进度模拟器</a>
+  <a href="#dice">摇骰子</a>
+  <a href="#score">绩效结算</a>
+  <a href="#okr">隐藏 OKR</a>
+  <a href="#faq">常见疑问</a>
+</div></nav>
+
+<header class="hero">
+  <div class="arcade-hero-deco" aria-hidden="true">
+    <span class="ghost ghost-pinky"></span>
+    <div class="pac-icon"></div>
+    <span class="ghost ghost-clyde"></span>
+  </div>
+  <div class="badge">RULEBOOK · v1.2 实测修订版</div>
+  <h1 class="title">需求风暴</h1>
+  <p>抽卡组队，用技能卡把一个产品需求「肝」上线——<b style="color:var(--gold)">工时是燃料，绩效是荣耀</b>。合力推进同一条进度条，却在关键节点暗中对赌、抢功背刺，笑到最后者即本 Sprint 的 MVP。</p>
+</header>
+
+<div class="wrap">
+
+  <section id="intro">
+    <h2><span class="bar"></span>🎴 一句话理解</h2>
+    <div class="grid g3">
+      <div class="card"><h3 style="color:var(--green)">半合作竞技</h3><p class="note">需求必须靠全场合力推上线（合作），但绩效只算个人、且稀缺（竞争）。</p></div>
+      <div class="card"><h3 style="color:var(--orange)">核心张力</h3><p class="note">工时有限 + 绩效稀缺 → 在「埋头攒进度」与「抢关键里程碑」之间反复取舍。</p></div>
+      <div class="card"><h3 style="color:var(--neon)">目标</h3><p class="note">把公共进度条推到 <b>200 上线</b>，亮出隐藏 OKR，总绩效最高者成为 <b style="color:var(--gold)">MVP</b>。</p></div>
+    </div>
+  </section>
+
+  <section id="start">
+    <h2><span class="bar"></span>⚡ 快速上手（5 分钟开局）</h2>
+    <p class="lead">新手推荐：3–4 人 · 需求卡 R-01 · 单 Sprint 快局 · 先关闭暗标 / 互动卡 / 隐藏 OKR，跑顺核心循环再加料。</p>
+    <div class="card">
+      <ol style="padding-left:20px">
+        <li>洗匀<b>行动牌库</b>，每人起手抽 <b>5 张</b>。</li>
+        <li><b>事件牌库</b>单独洗成一堆扣放，每 Round 翻 1 张。</li>
+        <li>需求卡池正面朝下，随机翻 <b>1 张</b>摆桌面中央（新手用 R-01）。</li>
+        <li>（完整局）每人暗抽 1 张 OKR；暗标规则卡放桌面中央。</li>
+        <li>划出<b>公共债区 / 个人债区</b>；每人拿一张绩效计分纸（从 0 开始）。</li>
+        <li>约定局制：单 Sprint 快局 或 2–3 Sprint 连续长局。</li>
+        <li>从任意玩家开始，顺时针进行，目标推进度到 200。</li>
+      </ol>
+    </div>
+  </section>
+
+  <section id="res">
+    <h2><span class="bar"></span>💎 三大核心资源</h2>
+    <p class="lead">点击展开每种资源的细则。</p>
+    <div class="acc"><div class="acc-head"><span>⏱️ 工时（Work-Hours）— 行动力</span><span class="arrow">▶</span></div>
+      <div class="acc-body"><ul style="padding-left:20px">
+        <li>每 Turn 预算：5 天 × 8 工时 = <b>40 工时 / 人</b>。</li>
+        <li>打技能卡的「燃料」，每张卡标注消耗。</li>
+        <li><b>不可跨 Turn 累积</b>——本 Turn 没用完直接清零。</li>
+        <li>加班、咖啡、通宵可临时提升上限（见工时计算器）。</li>
+      </ul></div></div>
+    <div class="acc"><div class="acc-head"><span>🏆 绩效（Performance）— 唯一胜负货币</span><span class="arrow">▶</span></div>
+      <div class="acc-body"><ul style="padding-left:20px">
+        <li>只在进展突破 / 考核季 / 部分需求卡 / 隐藏 OKR 结算时获得。</li>
+        <li><b>突破者拿大头，在场协作者拿小头。</b></li>
+        <li>绩效公开可见，制造竞争张力与「抢人头」空间。</li>
+        <li>连续 Sprint 中绩效累计不清零。</li>
+      </ul></div></div>
+    <div class="acc"><div class="acc-head"><span>📊 需求（Requirement）— 公共进度条</span><span class="arrow">▶</span></div>
+      <div class="acc-body"><ul style="padding-left:20px">
+        <li>全场共享一条进度条，<b>总进度 200</b>。</li>
+        <li>里程碑：<b>40 / 100 / 160 / 200</b>，跨过即触发「进展突破」发放绩效。</li>
+        <li>由开局随机抽的需求卡定义，每张卡自带机制与触发点。</li>
+        <li>2 人精简局：总进度与里程碑减半（20 / 50 / 80 / 100）。</li>
+      </ul></div></div>
+  </section>
+
+  <section id="flow">
+    <h2><span class="bar"></span>🔄 游戏流程 · 时间单位</h2>
+    <div class="card">
+      <div class="table-scroll">
+      <table>
+        <tr><th>术语</th><th>含义</th></tr>
+        <tr><td><b>Turn 回合</b></td><td>单个玩家的一次完整行动 = 1 个工作周</td></tr>
+        <tr><td><b>Round 轮</b></td><td>全体玩家各完成一次 Turn；每 Round 开始翻 1 张事件卡</td></tr>
+        <tr><td><b>Season 考核季</b></td><td>每 3 个 Round 为一季，季末做阶段结算</td></tr>
+        <tr><td><b>Sprint 迭代</b></td><td>一个需求从 0 推到 200 上线 = 1 个 Sprint</td></tr>
+      </table>
+      </div>
+    </div>
+    <div class="card">
+      <h3 style="margin-bottom:8px">单个 Turn 的四步</h3>
+      <div class="grid g3">
+        <div><b style="color:var(--neon)">1 抽卡（早会）</b><p class="note">手牌补至 5 张。</p></div>
+        <div><b style="color:var(--neon)">2 规划（排期）</b><p class="note">领 40 工时，规划出牌与顺序，预留暗标投资。</p></div>
+        <div><b style="color:var(--neon)">3 执行（开干）</b><p class="note">打卡推进度，跨里程碑立即结算绩效。</p></div>
+        <div><b style="color:var(--neon)">4 收尾（日报）</b><p class="note">弃牌，处理事件 / 状态的持续效果。</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="bid">
+    <h2><span class="bar"></span>🎯 暗标冲刺 · 灵魂博弈</h2>
+    <p class="lead">把「抢突破」从拼手速升级为资源对赌 + 虚张声势的心理博弈。</p>
+    <div class="card">
+      <h3 style="color:var(--gold)">何时触发（二者取先，每个里程碑仅 1 次）</h3>
+      <p class="note">① <b>进入冲刺区：</b>公共进度进入「距下一里程碑 ≤15」时，在跨越前开启暗标。<br>② <b>跨线瞬间：</b>若此前未进入冲刺区，而某卡 / 结算将直接跨过里程碑，则结算前立即暂停并补开 1 次暗标。</p>
+      <h3 style="color:var(--gold);margin-top:14px">暗押流程</h3>
+      <p class="note">每人秘密暗押 <b>0–8 工时</b>作为「冲刺投资」，同时亮出。<b>押注最高者</b>取得突破优先权——即便由他人打出跨线卡，绩效也归优先权持有者。平局则跨线者优先。<b style="color:var(--red)">代价：</b>所有押注工时立即消耗，无论是否抢到。</p>
+    </div>
+  </section>
+
+  <section id="cards">
+    <h2><span class="bar"></span>🃏 卡牌体系详解</h2>
+    <p class="lead">点击标签切换不同卡组。<span class="tag N">N 普通</span> <span class="tag R">R 稀有</span> <span class="tag E">E 史诗</span></p>
+    <div class="tabs">
+      <div class="tab active" data-tab="skill">🛠️ 技能卡</div>
+      <div class="tab" data-tab="buff">⚡ 加成卡</div>
+      <div class="tab" data-tab="coop">🤝 协作卡</div>
+      <div class="tab" data-tab="event-cards">🌩️ 事件卡</div>
+    </div>
+    <div class="panel active" id="skill"><div class="card"><div class="table-scroll"><table>
+      <tr><th>编号</th><th>名称</th><th>稀有</th><th>工时</th><th>效果</th><th>张数</th></tr>
+      <tr><td>S-01</td><td>写代码</td><td><span class="tag N">N</span></td><td>16</td><td>需求 +6</td><td>4</td></tr>
+      <tr><td>S-02</td><td>画原型</td><td><span class="tag N">N</span></td><td>8</td><td>需求 +3，本 Turn 下一张技能卡 -4 工时</td><td>3</td></tr>
+      <tr><td>S-03</td><td>做测试</td><td><span class="tag N">N</span></td><td>8</td><td>需求 +2，清除 1 个 Bug</td><td>3</td></tr>
+      <tr><td>S-04</td><td>需求拆解</td><td><span class="tag N">N</span></td><td>4</td><td>需求 +2，抽 1 张牌</td><td>2</td></tr>
+      <tr><td>S-05</td><td>灰度发布</td><td><span class="tag N">N</span></td><td>8</td><td>需求 +4，生成 1 个 Bug</td><td>2</td></tr>
+      <tr><td>S-06</td><td>性能优化</td><td><span class="tag R">R</span></td><td>12</td><td>需求 +4，清除 2 个 Bug</td><td>2</td></tr>
+      <tr><td>S-07</td><td>攻坚重构</td><td><span class="tag R">R</span></td><td>24</td><td>需求 +10（单卡最高产出）</td><td>2</td></tr>
+      <tr><td>S-08</td><td>紧急修复</td><td><span class="tag N">N</span></td><td>8</td><td>需求 +2，移除自己 1 个负面状态</td><td>2</td></tr>
+    </table></div></div></div>
+    <div class="panel" id="buff"><div class="card"><div class="table-scroll"><table>
+      <tr><th>编号</th><th>名称</th><th>稀有</th><th>工时</th><th>效果</th><th>张数</th></tr>
+      <tr><td>B-01</td><td>心流状态</td><td><span class="tag R">R</span></td><td>0</td><td>本 Turn 所有技能卡工时 -25%（上取整）</td><td>2</td></tr>
+      <tr><td>B-02</td><td>咖啡续命</td><td><span class="tag N">N</span></td><td>0</td><td>本 Turn 立即 +8 工时（不计加班惩罚）</td><td>2</td></tr>
+      <tr><td>B-03</td><td>复用轮子</td><td><span class="tag N">N</span></td><td>4</td><td>本 Turn 下一张技能卡工时减半（上取整）</td><td>2</td></tr>
+      <tr><td>B-04</td><td>通宵赶工</td><td><span class="tag N">N</span></td><td>0</td><td>加班透支上限提至 16；结算 -2 绩效 + 2 技术债</td><td>1</td></tr>
+      <tr><td>B-05</td><td>工具升级</td><td><span class="tag E">E</span></td><td>8</td><td>本季内每张技能卡额外 +1 进度（每局限 1 次）</td><td>1</td></tr>
+    </table></div></div></div>
+    <div class="panel" id="coop"><div class="card"><div class="table-scroll"><table>
+      <tr><th>编号</th><th>名称</th><th>稀有</th><th>工时</th><th>效果</th></tr>
+      <tr><td>C-01</td><td>需求评审</td><td><span class="tag N">N</span></td><td>6</td><td>全员各 +1 进度，自己 +2 绩效（季限 1）</td></tr>
+      <tr><td>C-02</td><td>知识共享</td><td><span class="tag N">N</span></td><td>4</td><td>抽 2 张，选 1 张交给任意玩家</td></tr>
+      <tr><td>C-03</td><td>站会对齐</td><td><span class="tag N">N</span></td><td>0</td><td>全员下个 Turn +4 工时</td></tr>
+      <tr><td>C-04</td><td>带新人</td><td><span class="tag N">N</span></td><td>8</td><td>指定 1 名玩家抽 1 张，自己 +1 绩效</td></tr>
+      <tr><td>C-05</td><td>技术调研</td><td><span class="tag N">N</span></td><td>4</td><td>看牌堆顶 3 张，留 1 张其余放回底部</td></tr>
+      <tr><td>C-06</td><td>邀功抢镜</td><td><span class="tag R">R</span></td><td>4</td><td>复制相邻玩家最近突破的协作者分值 +1 绩效（局限 1）</td></tr>
+      <tr><td>C-07</td><td>跨组支援</td><td><span class="tag R">R</span></td><td>8</td><td>合并 1 名玩家本 Turn 工时；触发里程碑则绩效双人均分</td></tr>
+      <tr><td>C-12</td><td>🫳 甩锅</td><td><span class="tag R">R</span></td><td>8</td><td>转移 1 个个人技术债 / Bug 给指定玩家（公共债不可甩，季限 1）</td></tr>
+      <tr><td>C-13</td><td>🏷️ 抢功</td><td><span class="tag R">R</span></td><td>0</td><td>他人跨里程碑瞬间打出，蹭协作者份额；本 Round 未加进度则截取突破者 1 绩效（季限 1）</td></tr>
+      <tr><td>C-14</td><td>🛡️ 背刺反制</td><td><span class="tag R">R</span></td><td>0</td><td>抵消一次针对你的互动卡，并令出牌者 -1 绩效（季限 1）</td></tr>
+    </table></div>
+    <p class="note" style="color:var(--red)">⚔️ 互动卡 C-12～C-14 均每考核季限打 1 次 / 人；C-14 只能在被针对的「当下」即时响应打出。</p>
+    </div></div>
+    <div class="panel" id="event-cards"><div class="card"><div class="table-scroll"><table>
+      <tr><th>编号</th><th>名称</th><th>触发</th><th>效果</th></tr>
+      <tr><td>E-01</td><td>需求变更</td><td>翻开即结算</td><td>进度 -10，全员弃 1 张手牌</td></tr>
+      <tr><td>E-02</td><td>线上故障</td><td>翻开者承担</td><td>翻开者本 Turn -16 工时救火</td></tr>
+      <tr><td>E-03</td><td>老板加塞</td><td>独立轨道</td><td>新增 20 进度临时轨道，最先完成者 +3 绩效</td></tr>
+      <tr><td>E-04</td><td>团建放松</td><td>翻开即结算</td><td>全员下个 Turn +8 工时</td></tr>
+      <tr><td>E-05</td><td>竞品上线</td><td>持续本 Round</td><td>本 Round 仅第一次被突破的里程碑绩效翻倍</td></tr>
+      <tr><td>E-06</td><td>突击检查</td><td>翻开即结算</td><td>手牌 &gt;3 的玩家各弃 1 张</td></tr>
+      <tr><td>E-07</td><td>需求砍半</td><td>翻开即结算</td><td>总目标 -20，未达成里程碑阈值各 -20</td></tr>
+      <tr><td>E-08</td><td>裁员风波</td><td>持续 1 Round</td><td>当前绩效最低者跳过下个 Turn 执行阶段</td></tr>
+      <tr><td>E-09</td><td>合规审查</td><td>翻开 / R-02 调用</td><td>每个未清 Bug 令需求 -3；若无 Bug 全员 +1 绩效</td></tr>
+    </table></div></div></div>
+  </section>
+
+  <section id="calc">
+    <h2><span class="bar"></span>🧮 工时上限计算器</h2>
+    <p class="lead">点击增益组合，实时算出本 Turn 工时上限与加班代价。基础预算为 40 工时。</p>
+    <div class="card sim">
+      <div class="chip-row" id="calcChips">
+        <div class="chip" data-h="8" data-overtime="false" data-key="coffee">☕ 咖啡续命 +8</div>
+        <div class="chip" data-h="8" data-overtime="true" data-key="ot">😩 基础加班 +8</div>
+        <div class="chip" data-h="16" data-overtime="true" data-key="night">🌙 通宵赶工 +16</div>
+      </div>
+      <div class="big" id="capOut">40 工时</div>
+      <div class="readout" id="penalty">无加班代价 ✅</div>
+      <p class="note">⚠️ 加班惩罚按「是否动用加班额度」判定，不按透支量加倍：动用即 -1 绩效 + 1 技术债；通宵额外 -2 绩效 + 2 技术债。</p>
+    </div>
+  </section>
+
+  <section id="sim">
+    <h2><span class="bar"></span>📈 进度里程碑模拟器</h2>
+    <p class="lead">点击模拟打出技能卡，推动公共进度条，亲历里程碑突破与暗标提示。</p>
+    <div class="card sim">
+      <div class="progress-track"><div class="progress-fill" id="fill"></div></div>
+      <div class="milestones"><span>0</span><span>M1·40</span><span>M2·100</span><span>M3·160</span><span>M4·200</span></div>
+      <div class="big" id="progVal">进度 0 / 200</div>
+      <div class="readout" id="simMsg"> </div>
+      <div class="btn-row">
+        <button class="btn" onclick="addProg(2)">需求拆解 +2</button>
+        <button class="btn" onclick="addProg(3)">画原型 +3</button>
+        <button class="btn primary" onclick="addProg(6)">写代码 +6</button>
+        <button class="btn warn" onclick="addProg(10)">攻坚重构 +10</button>
+        <button class="btn" onclick="resetProg()">↺ 重置</button>
+      </div>
+    </div>
+  </section>
+
+  <section id="dice">
+    <h2><span class="bar"></span>🎲 R-03 考核季摇骰子</h2>
+    <p class="lead">需求卡 R-03「AI 推荐引擎」：每考核季掷 1d6 —— 1~3 进度 -6，4~6 进度 +6。试试手气！</p>
+    <div class="card sim dice-module">
+      <div class="dice-legend">
+        <span class="chip chip-static dice-legend-bad">1~3 · 进度 -6</span>
+        <span class="chip chip-static dice-legend-good">4~6 · 进度 +6</span>
+      </div>
+      <div class="dice-wrap">
+        <div class="dice" id="diceFace" aria-live="polite"></div>
+      </div>
+      <button class="btn primary" type="button" id="diceBtn">🎲 投掷骰子</button>
+      <div class="dice-result is-idle" id="diceResult">
+        <div class="readout" id="diceOut">点击投掷查看本季进度修正</div>
+        <button class="btn btn-ghost dice-apply" type="button" id="diceApply" hidden>应用到进度模拟器</button>
+      </div>
+    </div>
+  </section>
+
+  <section id="score">
+    <h2><span class="bar"></span>⚖️ 绩效结算机制</h2>
+    <div class="card">
+      <h3 style="margin-bottom:8px">即时结算 · 里程碑绩效表</h3>
+      <div class="table-scroll">
+      <table>
+        <tr><th>里程碑</th><th>阈值</th><th>名称</th><th>突破者</th><th>在场协作者</th></tr>
+        <tr><td>M1</td><td>40</td><td>MVP 雏形</td><td style="color:var(--gold)">+3</td><td>+1</td></tr>
+        <tr><td>M2</td><td>100</td><td>核心功能</td><td style="color:var(--gold)">+4</td><td>+1</td></tr>
+        <tr><td>M3</td><td>160</td><td>体验打磨</td><td style="color:var(--gold)">+5</td><td>+2</td></tr>
+        <tr><td>M4</td><td>200</td><td>正式上线</td><td style="color:var(--gold)">+8</td><td>+3</td></tr>
+      </table>
+      </div>
+    </div>
+    <div class="acc"><div class="acc-head"><span>📅 阶段结算 · 每 3 Round 一个考核季</span><span class="arrow">▶</span></div>
+      <div class="acc-body"><ul style="padding-left:20px">
+        <li><b>季度之星：</b>本季绩效最高者 +2 绩效，抽 1 张稀有卡。</li>
+        <li><b>划水预警：</b>本季最低者下季首 Round 手牌上限 -1，打出协作卡即解除。</li>
+        <li><b>团队健康度：</b>季末仍未突破 M2(100)，全员 -1 绩效。</li>
+        <li><b>技术债结算：</b>每个技术债令需求 -2 进度（R-02 为 -3）。</li>
+      </ul></div></div>
+    <div class="acc"><div class="acc-head"><span>🔢 结算优先级（裁判必读）</span><span class="arrow">▶</span></div>
+      <div class="acc-body"><ol style="padding-left:20px">
+        <li><b>暗标优先权</b>确定突破者（押注最高者顶替跨线者）。</li>
+        <li><b>C-13 抢功</b>打出（蹭协作者份额 / 截取突破者 1 绩效）。</li>
+        <li>被针对者打出 <b>C-14 背刺反制</b>。</li>
+        <li><b>结算绩效</b>（突破者 + 在场协作者）。跨多级逐级结算，每级单独处理暗标。</li>
+      </ol></div></div>
+  </section>
+
+  <section id="okr">
+    <h2><span class="bar"></span>📈 隐藏 OKR · 点击翻牌</h2>
+    <p class="lead">开局每人暗抽 1 张扣在面前，总结算时亮出。点击卡片揭晓达成条件与奖励。</p>
+    <div class="grid g3" id="okrGrid"></div>
+  </section>
+
+  <section id="faq">
+    <h2><span class="bar"></span>❓ 常见疑问 FAQ</h2>
+    <div class="acc"><div class="acc-head"><span>Q1. 大幅跨线（如 S-07 一刀 +10）会绕过暗标吗？</span><span class="arrow">▶</span></div>
+      <div class="acc-body"><p class="note">不会。若进度此前未进入冲刺区，而某卡将直接跨过里程碑，结算前必须立即暂停并补开 1 次暗标。每个里程碑被突破前必有且仅有 1 次暗标。</p></div></div>
+    <div class="acc"><div class="acc-head"><span>Q2. 没用完的工时能留到下个 Turn 吗？</span><span class="arrow">▶</span></div>
+      <div class="acc-body"><p class="note">不能。工时不可跨 Turn 累积，本 Turn 没用完直接清零。</p></div></div>
+    <div class="acc"><div class="acc-head"><span>Q3. 暗标押了工时却没抢到，会退还吗？</span><span class="arrow">▶</span></div>
+      <div class="acc-body"><p class="note">不退。所有押注工时立即消耗，无论是否抢到优先权。</p></div></div>
+    <div class="acc"><div class="acc-head"><span>Q4. 公共技术债可以用甩锅（C-12）转移吗？</span><span class="arrow">▶</span></div>
+      <div class="acc-body"><p class="note">不可以。C-12 只能转移个人技术债 / Bug，公共债只能通过清债机制移除。</p></div></div>
+    <div class="acc"><div class="acc-head"><span>Q5. 互动卡一局能打几次？</span><span class="arrow">▶</span></div>
+      <div class="acc-body"><p class="note">C-12～C-14 每张每考核季限打 1 次 / 人，防止互相拆台导致进度卡死。</p></div></div>
+    <div class="acc"><div class="acc-head"><span>Q6. 一张卡同时跨过两个里程碑怎么算？</span><span class="arrow">▶</span></div>
+      <div class="acc-body"><p class="note">逐级结算全部绩效，且每个被跨阈值各自单独触发一次暗标。</p></div></div>
+  </section>
+
+  <footer class="site-footer">
+    <p>🚀 推荐试跑顺序：<span class="pill">v1.0 基线</span> → <span class="pill">仅暗标</span> → <span class="pill">暗标+互动卡+OKR</span> → <span class="pill">连续 Sprint ×2</span></p>
+    <p style="margin-top:10px">《需求风暴 · Requirement Storm》规则手册 v1.2 · 工时是燃料，绩效是荣耀</p>
+  </footer>
+</div>
+
+<script src="shared/nav.js?v=pacman-7"></script>
+<script src="shared/rules.js?v=pacman-7"></script>
+</body>
+</html>

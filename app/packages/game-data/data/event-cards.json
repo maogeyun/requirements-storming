@@ -1,0 +1,11 @@
+[
+  { "id": "E-01", "name": "需求变更", "trigger": "翻开即结算", "effectText": "进度条 -10，全员弃 1 张手牌" },
+  { "id": "E-02", "name": "线上故障", "trigger": "翻开者承担", "effectText": "翻开者本 Turn -16 工时救火" },
+  { "id": "E-03", "name": "老板加塞", "trigger": "独立轨道", "effectText": "新增临时需求轨道 20 进度，最先完成者 +3 绩效" },
+  { "id": "E-04", "name": "团建放松", "trigger": "翻开即结算", "effectText": "全员下个 Turn +8 工时" },
+  { "id": "E-05", "name": "竞品上线", "trigger": "持续本 Round", "effectText": "本 Round 第一次被突破的里程碑绩效翻倍" },
+  { "id": "E-06", "name": "突击检查", "trigger": "翻开即结算", "effectText": "手牌 >3 的玩家各弃 1 张" },
+  { "id": "E-07", "name": "需求砍半", "trigger": "翻开即结算", "effectText": "总目标 -20，未达成里程碑阈值同步 -20" },
+  { "id": "E-08", "name": "裁员风波", "trigger": "持续 1 Round", "effectText": "当前绩效最低者跳过下个 Turn 执行阶段" },
+  { "id": "E-09", "name": "合规审查", "trigger": "翻开即结算 / R-02 调用", "effectText": "每个未清 Bug 令需求 -3；无 Bug 则全员 +1 绩效" }
+]

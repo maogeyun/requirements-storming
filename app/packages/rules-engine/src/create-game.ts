@@ -9,6 +9,7 @@ import {
   getTotalProgressForPlayerCount,
 } from "@rs/game-data";
 import type { GameConfig, GameState, MilestoneId, PlayerState } from "@rs/shared";
+import { formatSeatDisplayName } from "@rs/shared";
 import { createRng, drawOne, shuffle } from "./rng";
 
 const ALL_MILESTONE_IDS: MilestoneId[] = ["M1", "M2", "M3", "M4"];
@@ -63,7 +64,7 @@ export function createGame(options: CreateGameOptions): GameState {
       okrId = pick.item;
       okrPool = pick.rest;
     }
-    return createPlayer(`p${index + 1}`, name, okrId);
+    return createPlayer(`p${index + 1}`, name, formatSeatDisplayName(index), okrId);
   });
 
   const actionDeck = shuffle(buildActionDeck(), rng);
@@ -88,6 +89,7 @@ export function createGame(options: CreateGameOptions): GameState {
     pendingDarkBid: null,
     pendingProgressSettlement: null,
     pendingPerformanceSettlement: null,
+    pendingPerformanceSettlementQueue: [],
     actionDeck,
     actionDiscard: [],
     eventDeck,
@@ -115,10 +117,16 @@ export function createGame(options: CreateGameOptions): GameState {
   return state;
 }
 
-function createPlayer(id: string, name: string, okrId: string | null): PlayerState {
+function createPlayer(
+  id: string,
+  name: string,
+  displayName: string,
+  okrId: string | null,
+): PlayerState {
   return {
     id,
     name,
+    displayName,
     performance: 0,
     hand: [],
     okrId,
@@ -158,6 +166,11 @@ export function getPlayer(state: GameState, playerId: string): PlayerState {
     throw new Error(`Player not found: ${playerId}`);
   }
   return player;
+}
+
+/** UI / 日志用：座位展示名，禁止把内部 id 泄漏到可见文案 */
+export function getDisplayName(state: GameState, playerId: string): string {
+  return getPlayer(state, playerId).displayName;
 }
 
 export function getSprintZoneDistanceForState(state: GameState): number {

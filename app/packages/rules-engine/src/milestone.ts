@@ -236,6 +236,9 @@ export function settleMilestonePerformance(
 /**
  * 应用进度增益并结算跨线里程碑。
  * 若存在未解决的强制暗标（尤其是跨线补开），拒绝结算。
+ *
+ * 互动模块开启时：每条跨线按序 C-13 窗 →（C-14）→ 绩效结算；多线排队，不跳过后续线的 C-13。
+ * 进度只加一次，避免与暗标双重结算。
  */
 export function applyProgressGain(
   state: GameState,
@@ -251,22 +254,27 @@ export function applyProgressGain(
     throw new Error("Cannot apply progress while dark bid is pending (必须补开，不能跳过)");
   }
 
-  // Any unused milestone about to be crossed requires a resolved dark bid first.
-  const wouldCross = milestonesCrossedByGain(state.progress, gain, state.milestones).filter(
-    (m) => !state.darkBidUsed[m.id],
-  );
-  if (wouldCross.length > 0 && state.config.modules.darkBid) {
-    for (const milestone of wouldCross) {
-      if (!bid || !bid.resolved || bid.milestoneId !== milestone.id) {
-        throw new Error("Dark bid required before settlement (必须补开，不能跳过)");
-      }
+  // 跨线暗标门禁：resolveDarkBidBids 可能已把触发线标成 used。
+  // 同次多线时，只要本次增益跨过的集合里包含已完成的那条暗标线，即放行并标记其余线。
+  const crossedNow = milestonesCrossedByGain(state.progress, gain, state.milestones);
+  const needingBid = crossedNow.filter((m) => !state.darkBidUsed[m.id]);
+  if (needingBid.length > 0 && state.config.modules.darkBid) {
+    if (!bid || !bid.resolved) {
+      throw new Error("Dark bid required before settlement (必须补开，不能跳过)");
+    }
+    const bidCoversThisGain = crossedNow.some((m) => m.id === bid.milestoneId);
+    if (!bidCoversThisGain) {
+      throw new Error("Dark bid required before settlement (必须补开，不能跳过)");
+    }
+    for (const milestone of needingBid) {
+      state.darkBidUsed[milestone.id] = true;
     }
   }
 
   state.roundContributors.add(playerId);
   getPlayer(state, playerId).contributedThisRound = true;
 
-  const crossed = milestonesCrossedByGain(state.progress, gain, state.milestones);
+  const crossed = crossedNow;
   state.progress += gain;
 
   const settlements: MilestoneSettlement[] = [];
@@ -282,16 +290,16 @@ export function applyProgressGain(
       if (!state.crossedMilestones.includes(milestone.id)) {
         state.crossedMilestones.push(milestone.id);
       }
+      const pending = {
+        milestoneId: milestone.id,
+        breakerId,
+        collaboratorIds,
+      };
       if (!state.pendingInteraction && !state.pendingPerformanceSettlement) {
-        openC13Window(state, {
-          milestoneId: milestone.id,
-          breakerId,
-          collaboratorIds,
-        });
+        openC13Window(state, pending);
       } else {
-        // 同次跨多线：后续里程碑在互动窗关闭后由调用方续结；此处先挂起到队列字段
-        // v1 简化：若已有窗，直接结算后续线（C-13 仅绑第一条）
-        settleMilestonePerformance(state, milestone, breakerId, collaboratorIds);
+        // 同次跨多线：后续线入队，等当前线 C-13→C-14→绩效完成后再开窗
+        state.pendingPerformanceSettlementQueue.push(pending);
       }
     } else {
       settleMilestonePerformance(state, milestone, breakerId, collaboratorIds);

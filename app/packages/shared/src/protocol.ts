@@ -31,6 +31,7 @@ export interface LobbyState {
 export interface PublicPlayerSummary {
   id: string;
   name: string;
+  displayName: string;
   performance: number;
   handCount: number;
   personalBugs: number;

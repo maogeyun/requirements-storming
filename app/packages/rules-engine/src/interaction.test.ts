@@ -217,6 +217,95 @@ describe("互动卡 C-12～C-14", () => {
     expect(state.players[0]!.performance).toBe(3);
     expect(state.pendingPerformanceSettlement).toBeNull();
   });
+
+  it("同次多跨线：后续线仍依次开 C-13 窗，且不与暗标双重结算", () => {
+    const state = makeInteractionState();
+    // M1=40 / M2=100：22+80 → 102，一次跨两条
+    state.progress = 22;
+    state.darkBidUsed = { M1: false, M2: false, M3: false, M4: false };
+    state.crossedMilestones = [];
+    state.pendingPerformanceSettlementQueue = [];
+    state.activeEventFlags.doubleFirstMilestoneThisRound = false;
+
+    const opened = attemptProgressGain(state, "p1", 80, null);
+    expect(opened.needsDarkBid).toBe(true);
+    expect(state.progress).toBe(22);
+
+    for (const id of state.playerOrder) {
+      submitDarkBid(state, id, id === "p1" ? 5 : 0);
+    }
+    completeDarkBidAndSettle(state);
+
+    // 进度只加一次；先开 M1 的 C-13，M2 入队
+    expect(state.progress).toBe(102);
+    expect(state.pendingInteraction?.type).toBe("C13_WINDOW");
+    expect(state.pendingInteraction && state.pendingInteraction.type === "C13_WINDOW"
+      ? state.pendingInteraction.milestoneId
+      : null).toBe("M1");
+    expect(state.pendingPerformanceSettlementQueue).toHaveLength(1);
+    expect(state.pendingPerformanceSettlementQueue[0]?.milestoneId).toBe("M2");
+    expect(state.players[0]!.performance).toBe(0);
+
+    // 全员弃权 M1 → 结算 M1 后自动开 M2 的 C-13
+    for (const id of ["p2", "p3", "p4"]) {
+      applyAction(state, { type: "PASS_C13", playerId: id });
+    }
+    expect(state.players[0]!.performance).toBe(3); // M1 breaker +3
+    expect(state.pendingInteraction?.type).toBe("C13_WINDOW");
+    expect(state.pendingInteraction && state.pendingInteraction.type === "C13_WINDOW"
+      ? state.pendingInteraction.milestoneId
+      : null).toBe("M2");
+    expect(state.pendingPerformanceSettlementQueue).toHaveLength(0);
+
+    // 在 M2 窗打 C-13 截绩效
+    const p4 = state.players[3]!;
+    p4.hand = ["C-13", ...p4.hand.filter((id) => id !== "C-13")];
+    p4.seasonPlayedCollab = [];
+    p4.contributedThisRound = false;
+    applyAction(state, { type: "RESPOND_C13", playerId: "p4" });
+    expect(state.pendingInteraction?.type).toBe("C14");
+
+    applyAction(state, { type: "DECLINE_C14", playerId: "p1" });
+    // M1(+3) + M2(+4) -1 截取 = 6；截取者 +1
+    expect(state.players[0]!.performance).toBe(6);
+    expect(state.players[3]!.performance).toBe(1);
+    expect(state.pendingInteraction).toBeNull();
+    expect(state.pendingPerformanceSettlement).toBeNull();
+    expect(state.pendingPerformanceSettlementQueue).toHaveLength(0);
+    expect(state.crossedMilestones).toEqual(expect.arrayContaining(["M1", "M2"]));
+  });
+
+  it("同次多跨线：后续线全员弃权也走 C-13 路径", () => {
+    const state = makeInteractionState();
+    state.progress = 22;
+    state.darkBidUsed = { M1: false, M2: false, M3: false, M4: false };
+    state.crossedMilestones = [];
+    state.activeEventFlags.doubleFirstMilestoneThisRound = false;
+
+    attemptProgressGain(state, "p1", 80, null);
+    for (const id of state.playerOrder) {
+      submitDarkBid(state, id, 0);
+    }
+    completeDarkBidAndSettle(state);
+    expect(state.pendingPerformanceSettlementQueue[0]?.milestoneId).toBe("M2");
+
+    for (const id of ["p2", "p3", "p4"]) {
+      applyAction(state, { type: "PASS_C13", playerId: id });
+    }
+    expect(state.pendingInteraction?.type).toBe("C13_WINDOW");
+    expect(
+      state.pendingInteraction && state.pendingInteraction.type === "C13_WINDOW"
+        ? state.pendingInteraction.milestoneId
+        : null,
+    ).toBe("M2");
+
+    for (const id of ["p2", "p3", "p4"]) {
+      applyAction(state, { type: "PASS_C13", playerId: id });
+    }
+    expect(state.pendingInteraction).toBeNull();
+    expect(state.players[0]!.performance).toBe(7); // M1+3 + M2+4
+    expect(state.pendingPerformanceSettlementQueue).toHaveLength(0);
+  });
 });
 
 describe("暗标 + 互动并发", () => {

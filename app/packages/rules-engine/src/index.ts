@@ -1,4 +1,10 @@
-export { createGame, createDefaultConfig, getPlayer, getSprintZoneDistanceForState } from "./create-game";
+export {
+  createGame,
+  createDefaultConfig,
+  getPlayer,
+  getDisplayName,
+  getSprintZoneDistanceForState,
+} from "./create-game";
 export type { CreateGameOptions } from "./create-game";
 export * from "./milestone";
 export * from "./rng";

@@ -1,6 +1,6 @@
 import { getActionCard, isInteractionCardId } from "@rs/game-data";
 import type { GameState, MilestoneId, PendingPerformanceSettlement, PlayerState } from "@rs/shared";
-import { getPlayer } from "./create-game";
+import { getDisplayName, getPlayer } from "./create-game";
 
 export function hasUsedInteractionThisSeason(player: PlayerState): boolean {
   return player.seasonPlayedCollab.some((id) => isInteractionCardId(id));
@@ -77,7 +77,7 @@ export function playC12(
   };
 
   return [
-    `${playerId} 打出 C-12 甩锅 → ${targetId}（${dumpKind === "debt" ? "个人债" : "Bug"}）`,
+    `${getDisplayName(state, playerId)} 打出 C-12 甩锅 → ${getDisplayName(state, targetId)}（${dumpKind === "debt" ? "个人债" : "Bug"}）`,
     "必须打开 C-14 响应窗，不能跳过",
   ];
 }
@@ -121,12 +121,20 @@ function applyScaledSettlement(
   state.pendingPerformanceSettlement = null;
   state.pendingInteraction = null;
 
+  const collabNames = settlement.collaboratorIds.map((id) => getDisplayName(state, id));
   return [
-    `结算 ${settlement.milestoneId}：突破者 ${settlement.breakerId} +${breakerPerf}` +
+    `结算 ${settlement.milestoneId}：突破者 ${getDisplayName(state, settlement.breakerId)} +${breakerPerf}` +
       (settlement.collaboratorIds.length
-        ? `，协作者 ${settlement.collaboratorIds.join("/")} 各 +${collabPerf}`
+        ? `，协作者 ${collabNames.join("/")} 各 +${collabPerf}`
         : ""),
   ];
+}
+
+/** 当前线结算后，打开队列中下一条跨线的 C-13 窗 */
+function openNextQueuedC13Window(state: GameState): string[] {
+  const next = state.pendingPerformanceSettlementQueue.shift();
+  if (!next) return [];
+  return openC13Window(state, next);
 }
 
 /** 打开跨线后的 C-13 窗口；模块关闭时直接结算绩效 */
@@ -147,7 +155,7 @@ export function openC13Window(
     passedIds: [],
   };
   return [
-    `跨线 ${settlement.milestoneId}：先开 C-13 窗（突破者 ${settlement.breakerId}），绩效尚未结算`,
+    `跨线 ${settlement.milestoneId}：先开 C-13 窗（突破者 ${getDisplayName(state, settlement.breakerId)}），绩效尚未结算`,
   ];
 }
 
@@ -184,8 +192,8 @@ export function playC13FromWindow(state: GameState, playerId: string): string[] 
   };
 
   return [
-    `${playerId} 打出 C-13 抢功（${mode === "hitch" ? "蹭协作者" : "截 1 绩效"}）`,
-    `针对突破者 ${pending.breakerId}：必须打开 C-14 响应窗，不能跳过`,
+    `${getDisplayName(state, playerId)} 打出 C-13 抢功（${mode === "hitch" ? "蹭协作者" : "截 1 绩效"}）`,
+    `针对突破者 ${getDisplayName(state, pending.breakerId)}：必须打开 C-14 响应窗，不能跳过`,
   ];
 }
 
@@ -203,7 +211,7 @@ export function passC13(state: GameState, playerId: string): string[] {
   const eligible = state.playerOrder.filter((id) => id !== pending.breakerId);
   const allPassed = eligible.every((id) => pending.passedIds.includes(id));
   if (!allPassed) {
-    return [`${playerId} 弃权 C-13`];
+    return [`${getDisplayName(state, playerId)} 弃权 C-13`];
   }
 
   return finalizePerformanceSettlement(state, {
@@ -235,8 +243,8 @@ export function respondC14(state: GameState, playerId: string): string[] {
   source.performance = Math.max(0, source.performance - 1);
 
   const messages = [
-    `${playerId} 打出 C-14 背刺反制，抵消 ${pending.sourceCardId}`,
-    `${pending.sourceId} -1 绩效`,
+    `${getDisplayName(state, playerId)} 打出 C-14 背刺反制，抵消 ${pending.sourceCardId}`,
+    `${getDisplayName(state, pending.sourceId)} -1 绩效`,
   ];
 
   if (pending.sourceCardId === "C-12") {
@@ -262,13 +270,13 @@ export function declineC14(state: GameState, playerId: string): string[] {
     throw new Error("只有被针对者可关闭 C-14 窗");
   }
 
-  const messages = [`${playerId} 放弃 C-14，互动生效`];
+  const messages = [`${getDisplayName(state, playerId)} 放弃 C-14，互动生效`];
 
   if (pending.sourceCardId === "C-12") {
     applyC12Transfer(state, pending.sourceId, pending.targetId, pending.dumpKind ?? "debt");
     state.pendingInteraction = null;
     messages.push(
-      `转移完成：${pending.dumpKind === "bug" ? "Bug" : "个人债"} → ${pending.targetId}`,
+      `转移完成：${pending.dumpKind === "bug" ? "Bug" : "个人债"} → ${getDisplayName(state, pending.targetId)}`,
     );
     return messages;
   }
@@ -301,7 +309,9 @@ export function declineC14(state: GameState, playerId: string): string[] {
     if (breaker.performance > 0) {
       breaker.performance -= 1;
       thief.performance += 1;
-      messages.push(`${sourceId} 截取 ${settlement.breakerId} 的 1 绩效`);
+      messages.push(
+        `${getDisplayName(state, sourceId)} 截取 ${getDisplayName(state, settlement.breakerId)} 的 1 绩效`,
+      );
     }
   }
 
@@ -335,7 +345,9 @@ export function finalizePerformanceSettlement(
   state: GameState,
   settlement: PendingPerformanceSettlement,
 ): string[] {
-  return applyScaledSettlement(state, settlement);
+  const messages = applyScaledSettlement(state, settlement);
+  messages.push(...openNextQueuedC13Window(state));
+  return messages;
 }
 
 export function c13ModeForPlayer(state: GameState, playerId: string): "hitch" | "steal" {

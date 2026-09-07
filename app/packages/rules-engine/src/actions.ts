@@ -1,6 +1,6 @@
 import { getActionCard, isInteractionCardId } from "@rs/game-data";
 import type { GameAction, GameState, LegalAction, MilestoneId } from "@rs/shared";
-import { getPlayer } from "./create-game";
+import { getDisplayName, getPlayer } from "./create-game";
 import { assertEventFlipped, flipEventCard, forceFlipSpecificEvent } from "./events";
 import {
   declineC14,
@@ -111,10 +111,15 @@ export function attemptProgressGain(
 
   const settlements = applyProgressGain(state, playerId, progressGain);
   const events = settlements.map(
-    (s) => `里程碑 ${s.milestoneId} 突破者 ${s.breakerId}`,
+    (s) => `里程碑 ${s.milestoneId} 突破者 ${getDisplayName(state, s.breakerId)}`,
   );
   if (state.pendingInteraction?.type === "C13_WINDOW") {
     events.push("绩效挂起：先处理 C-13 窗（可打 C-13 或弃权）");
+    if (state.pendingPerformanceSettlementQueue.length > 0) {
+      events.push(
+        `另有 ${state.pendingPerformanceSettlementQueue.length} 条跨线排队：将按序开 C-13 窗`,
+      );
+    }
   }
 
   if (trigger && !willCross) {
@@ -290,11 +295,16 @@ export function applyAction(state: GameState, action: GameAction): ApplyResult {
           return fail("当前没有待处理的暗标");
         }
         submitDarkBid(state, action.playerId, action.amount);
-        const events = [`${action.playerId} 已提交暗标`];
+        const events = [`${getDisplayName(state, action.playerId)} 已提交暗标`];
         if (allPlayersBid(state)) {
           const settlements = completeDarkBidAndSettle(state);
           if (state.pendingInteraction?.type === "C13_WINDOW") {
             events.push("暗标完成 → 打开 C-13 窗（绩效尚未结算）");
+            if (state.pendingPerformanceSettlementQueue.length > 0) {
+              events.push(
+                `另有 ${state.pendingPerformanceSettlementQueue.length} 条跨线排队：将按序开 C-13 窗`,
+              );
+            }
           } else {
             events.push("暗标完成，继续结算");
           }
@@ -580,7 +590,7 @@ export function listLegalActions(state: GameState, actorId: string): LegalAction
         const hasPersonal =
           player.personalDebt > 0 || player.personalBugs > 0;
         for (const target of state.playerOrder.filter((id) => id !== actorId)) {
-          const targetName = state.players.find((p) => p.id === target)?.name ?? target;
+          const targetName = getDisplayName(state, target);
           if (player.personalDebt > 0) {
             actions.push({
               action: {
@@ -702,6 +712,7 @@ export function setupCatchUpScenario(state: GameState, progress = 22): void {
   state.pendingDarkBid = null;
   state.pendingProgressSettlement = null;
   state.pendingPerformanceSettlement = null;
+  state.pendingPerformanceSettlementQueue = [];
   state.pendingInteraction = null;
   state.crossedMilestones = [];
   state.darkBidUsed = { M1: false, M2: false, M3: false, M4: false };

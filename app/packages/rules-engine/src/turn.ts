@@ -1,7 +1,7 @@
 import { gameConstants } from "@rs/game-data";
 import type { GameState } from "@rs/shared";
-import { getPlayer } from "./create-game.js";
-import { createRng, drawOne } from "./rng.js";
+import { getPlayer } from "./create-game";
+import { createRng, drawOne } from "./rng";
 
 export function getCurrentPlayerId(state: GameState): string {
   return state.playerOrder[state.currentPlayerIndex]!;

@@ -11,7 +11,7 @@ import type {
   ServerMessage,
 } from "@rs/shared";
 import { ErrorCode, roomConfigToGameConfig } from "@rs/shared";
-import { getDefaultRoomConfig, getPlayerView } from "./player-view.js";
+import { getDefaultRoomConfig, getPlayerView } from "./player-view";
 
 interface RoomStorage {
   phase: RoomPhase;

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { gameConstants } from "@rs/game-data";
 import type { GameState } from "@rs/shared";
-import { createGame } from "./create-game.js";
+import { createGame } from "./create-game";
 import {
   applyProgressGain,
   detectDarkBidTrigger,
@@ -12,15 +12,15 @@ import {
   submitDarkBid,
   completeDarkBidAndSettle,
   allPlayersBid,
-} from "./milestone.js";
+} from "./milestone";
 import {
   applyAction,
   attemptProgressGain,
   forceCatchUpProgressAttempt,
   listLegalActions,
   playSkillCardWithBids,
-} from "./actions.js";
-import { getCurrentPlayerId } from "./turn.js";
+} from "./actions";
+import { getCurrentPlayerId } from "./turn";
 
 function makeDarkBidState(progress: number): GameState {
   const state = createGame({

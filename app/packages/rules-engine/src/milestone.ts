@@ -1,5 +1,5 @@
 import type { DarkBidState, GameState, MilestoneDefinition, MilestoneId } from "@rs/shared";
-import { getPlayer, getSprintZoneDistanceForState } from "./create-game.js";
+import { getPlayer, getSprintZoneDistanceForState } from "./create-game";
 
 export function distanceToMilestone(progress: number, threshold: number): number {
   return threshold - progress;

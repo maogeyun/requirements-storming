@@ -1,8 +1,8 @@
-export { createGame, createDefaultConfig, getPlayer, getSprintZoneDistanceForState } from "./create-game.js";
-export type { CreateGameOptions } from "./create-game.js";
-export * from "./milestone.js";
-export * from "./rng.js";
-export * from "./turn.js";
+export { createGame, createDefaultConfig, getPlayer, getSprintZoneDistanceForState } from "./create-game";
+export type { CreateGameOptions } from "./create-game";
+export * from "./milestone";
+export * from "./rng";
+export * from "./turn";
 export {
   applyAction,
   attemptProgressGain,
@@ -11,5 +11,5 @@ export {
   playSkillCard,
   playSkillCardWithBids,
   setupCatchUpScenario,
-} from "./actions.js";
-export type { ApplyActionResult, ApplyResult } from "./actions.js";
+} from "./actions";
+export type { ApplyActionResult, ApplyResult } from "./actions";

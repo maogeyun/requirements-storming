@@ -1,3 +1,3 @@
-export * from "./types.js";
-export * from "./errors.js";
-export * from "./protocol.js";
+export * from "./types";
+export * from "./errors";
+export * from "./protocol";

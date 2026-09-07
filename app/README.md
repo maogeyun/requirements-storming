@@ -46,6 +46,8 @@ pnpm lint
 pnpm validate:data
 ```
 
+workspace 包（`@rs/shared` / `@rs/game-data` / `@rs/rules-engine`）以 **TS 源** 导出，供 Next `transpilePackages` 与 Vitest 直接消费；相对导入不使用 `.js` 后缀（`moduleResolution: Bundler`）。安装后无需先 `pnpm -r build` 即可跑 web。
+
 启动开发服务（两个终端）：
 
 ```bash

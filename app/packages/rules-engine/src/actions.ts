@@ -1,6 +1,6 @@
 import { getActionCard } from "@rs/game-data";
 import type { GameAction, GameState, LegalAction, MilestoneId } from "@rs/shared";
-import { getPlayer } from "./create-game.js";
+import { getPlayer } from "./create-game";
 import {
   allPlayersBid,
   applyProgressGain,
@@ -10,7 +10,7 @@ import {
   openDarkBid,
   submitDarkBid,
   type MilestoneSettlement,
-} from "./milestone.js";
+} from "./milestone";
 import {
   assertNoPendingDarkBid,
   endExecutePhase,
@@ -18,7 +18,7 @@ import {
   getCurrentPlayerId,
   runDrawPhase,
   runPlanPhase,
-} from "./turn.js";
+} from "./turn";
 
 export interface ApplyActionResult {
   ok: true;

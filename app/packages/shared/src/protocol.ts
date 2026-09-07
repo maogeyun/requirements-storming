@@ -1,5 +1,5 @@
-import type { GameAction, GameConfig, GameModuleFlags, GameState, PlayerState } from "./types.js";
-import type { ErrorPayload } from "./errors.js";
+import type { GameAction, GameConfig, GameModuleFlags, GameState, PlayerState } from "./types";
+import type { ErrorPayload } from "./errors";
 
 export type RoomPhase = "lobby" | "playing" | "finished";
 

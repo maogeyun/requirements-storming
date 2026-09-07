@@ -9,7 +9,7 @@ import {
   getTotalProgressForPlayerCount,
 } from "@rs/game-data";
 import type { GameConfig, GameState, MilestoneId, PlayerState } from "@rs/shared";
-import { createRng, drawOne, shuffle } from "./rng.js";
+import { createRng, drawOne, shuffle } from "./rng";
 
 const ALL_MILESTONE_IDS: MilestoneId[] = ["M1", "M2", "M3", "M4"];
 
@@ -86,6 +86,7 @@ export function createGame(options: CreateGameOptions): GameState {
     crossedMilestones: [],
     darkBidUsed: { M1: false, M2: false, M3: false, M4: false },
     pendingDarkBid: null,
+    pendingProgressSettlement: null,
     actionDeck,
     actionDiscard: [],
     eventDeck,

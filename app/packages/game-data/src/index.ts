@@ -1,6 +1,3 @@
-import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
 import type {
   ActionCardDefinition,
   EventCardDefinition,
@@ -9,12 +6,11 @@ import type {
   OkrCardDefinition,
   RequirementCardDefinition,
 } from "@rs/shared";
-
-const dataDir = join(dirname(fileURLToPath(import.meta.url)), "..", "data");
-
-function loadJson<T>(file: string): T {
-  return JSON.parse(readFileSync(join(dataDir, file), "utf-8")) as T;
-}
+import actionCardsJson from "./data/action-cards.json" with { type: "json" };
+import constantsJson from "./data/constants.json" with { type: "json" };
+import eventCardsJson from "./data/event-cards.json" with { type: "json" };
+import okrCardsJson from "./data/okr-cards.json" with { type: "json" };
+import requirementCardsJson from "./data/requirement-cards.json" with { type: "json" };
 
 type RawConstants = Omit<GameConstants, "milestonesStandard" | "milestonesTwoPlayer"> & {
   milestonesStandard: MilestoneDefinition[];
@@ -28,7 +24,7 @@ export type ActionCardWithMeta = ActionCardDefinition & {
   selfPerformance?: number;
 };
 
-const rawConstants = loadJson<RawConstants>("constants.json");
+const rawConstants = constantsJson as RawConstants;
 
 export const gameConstants: GameConstants = {
   version: rawConstants.version,
@@ -49,10 +45,10 @@ export const gameConstants: GameConstants = {
 };
 
 export const p3Milestones = rawConstants.p3Milestones;
-export const actionCards = loadJson<ActionCardWithMeta[]>("action-cards.json");
-export const eventCards = loadJson<EventCardDefinition[]>("event-cards.json");
-export const requirementCards = loadJson<RequirementCardDefinition[]>("requirement-cards.json");
-export const okrCards = loadJson<OkrCardDefinition[]>("okr-cards.json");
+export const actionCards = actionCardsJson as ActionCardWithMeta[];
+export const eventCards = eventCardsJson as EventCardDefinition[];
+export const requirementCards = requirementCardsJson as RequirementCardDefinition[];
+export const okrCards = okrCardsJson as OkrCardDefinition[];
 
 const actionCardMap = new Map(actionCards.map((c) => [c.id, c]));
 

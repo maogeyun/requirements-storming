@@ -46,6 +46,8 @@ pnpm lint
 pnpm validate:data
 ```
 
+workspace 包（`@rs/shared` / `@rs/game-data` / `@rs/rules-engine`）以 **TS 源** 导出，供 Next `transpilePackages` 与 Vitest 直接消费；相对导入不使用 `.js` 后缀（`moduleResolution: Bundler`）。安装后无需先 `pnpm -r build` 即可跑 web。
+
 启动开发服务（两个终端）：
 
 ```bash
@@ -68,7 +70,9 @@ pnpm dev:web      # Next.js @ localhost:3000
 
 - [x] `createGame()` + FIX-01 暗标检测/结算
 - [x] 单元测试：TC-610、TC-701、TC-703、TC-705、TC-706
-- [ ] Turn 四阶段完整流程
+- [x] Turn 四阶段完整流程（draw → plan → execute → end）
+- [x] 跨线补开可中断状态 `pendingDarkBid` + `pendingProgressSettlement`
+- [x] Web 最小可玩壳 `/play`（本机多座位）
 - [ ] 事件牌 / 互动链 / Season / Sprint / OKR
 
 ### M2+（待做）
@@ -76,6 +80,17 @@ pnpm dev:web      # Next.js @ localhost:3000
 - [ ] 联机完整 action 校验链
 - [ ] 大厅 / 牌桌 UI
 - [ ] 暗标 reveal 时序、断线重连
+
+## M1 可玩壳
+
+```bash
+cd app
+pnpm install
+pnpm --filter @rs/web dev
+# 打开 http://localhost:3000/play
+```
+
+手动验收：开局确认规则 v1.2 → 推进四阶段 →「演示：跨线补开」验证强制暗标不可跳过。
 
 ## 设计文档
 

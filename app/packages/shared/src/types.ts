@@ -129,6 +129,16 @@ export interface DarkBidState {
   crosserId: string | null;
 }
 
+/**
+ * 跨线补开暗标时，进度结算被挂起，直至暗标完成。
+ * 出牌扣工时 / 弃牌已发生；applyProgressGain 尚未执行。
+ */
+export interface PendingProgressSettlement {
+  playerId: string;
+  cardId: string | null;
+  progressGain: number;
+}
+
 export interface GameState {
   config: GameConfig;
   constants: GameConstants;
@@ -148,6 +158,8 @@ export interface GameState {
   /** 每个里程碑是否已暗标 */
   darkBidUsed: Record<MilestoneId, boolean>;
   pendingDarkBid: DarkBidState | null;
+  /** 补开暗标未完成前的挂起进度结算 */
+  pendingProgressSettlement: PendingProgressSettlement | null;
   actionDeck: string[];
   actionDiscard: string[];
   eventDeck: string[];
@@ -174,10 +186,21 @@ export interface GameState {
 export type GameAction =
   | { type: "START_TURN" }
   | { type: "DRAW_TO_HAND_LIMIT" }
+  | { type: "CONFIRM_PLAN" }
   | { type: "PLAY_CARD"; playerId: string; cardId: string; targets?: string[] }
   | { type: "SUBMIT_DARK_BID"; playerId: string; amount: number }
   | { type: "RESOLVE_DARK_BID"; crosserId: string }
   | { type: "RESPOND_C13"; playerId: string }
   | { type: "RESPOND_C14"; playerId: string; sourceId: string }
+  | { type: "END_EXECUTE" }
+  | { type: "FINISH_END_PHASE" }
   | { type: "END_TURN" }
   | { type: "END_ROUND" };
+
+/** UI / 校验用：当前可执行动作及禁用原因 */
+export interface LegalAction {
+  action: GameAction;
+  label: string;
+  enabled: boolean;
+  reason?: string;
+}

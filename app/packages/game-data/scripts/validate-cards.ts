@@ -4,7 +4,7 @@ import {
   eventCards,
   okrCards,
   requirementCards,
-} from "../src/index.js";
+} from "../src/index";
 
 const ACTION_REQUIRED = [
   "id",

@@ -9,6 +9,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@rs/game-data": "workspace:*",
+    "@rs/rules-engine": "workspace:*",
     "@rs/shared": "workspace:*",
     "next": "^15.3.3",
     "react": "^19.1.0",

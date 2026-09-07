@@ -1,6 +1,11 @@
 import { gameConstants } from "@rs/game-data";
 import type { GameState } from "@rs/shared";
 import { getPlayer } from "./create-game";
+import {
+  assertEventFlipped,
+  resetEventFlagsForNewRound,
+  resolveEndPhaseEventEffects,
+} from "./events";
 import { createRng, drawOne } from "./rng";
 
 export function getCurrentPlayerId(state: GameState): string {
@@ -16,9 +21,23 @@ export function assertNoPendingDarkBid(state: GameState): void {
   }
 }
 
+export function assertNoPendingInteraction(state: GameState): void {
+  if (state.pendingInteraction?.type === "C14") {
+    throw new Error("必须响应 C-14，不能跳过");
+  }
+  if (state.pendingInteraction?.type === "C13_WINDOW") {
+    throw new Error("跨线互动窗未关闭：请先处理 C-13 或弃权");
+  }
+  if (state.pendingPerformanceSettlement) {
+    throw new Error("跨线绩效尚未结算");
+  }
+}
+
 /** 抽卡阶段：手牌补至上限，然后进入规划 */
 export function runDrawPhase(state: GameState): void {
+  assertEventFlipped(state);
   assertNoPendingDarkBid(state);
+  assertNoPendingInteraction(state);
   if (state.turnPhase !== "draw") {
     throw new Error("Not in draw phase");
   }
@@ -37,7 +56,6 @@ export function runDrawPhase(state: GameState): void {
   if (player.hand.length < handLimit && state.actionDeck.length === 0 && state.actionDiscard.length > 0) {
     state.actionDeck = [...state.actionDiscard];
     state.actionDiscard = [];
-    // simple reshuffle via rng draws
     const reshuffled: string[] = [];
     let pool = state.actionDeck;
     while (pool.length > 0) {
@@ -58,17 +76,30 @@ export function runDrawPhase(state: GameState): void {
 
 /** 规划阶段：领取本 Turn 工时预算，进入执行 */
 export function runPlanPhase(state: GameState): void {
+  assertEventFlipped(state);
   assertNoPendingDarkBid(state);
+  assertNoPendingInteraction(state);
   if (state.turnPhase !== "plan") {
     throw new Error("Not in plan phase");
   }
 
   const player = getPlayer(state, getCurrentPlayerId(state));
-  const base = gameConstants.baseWorkHoursPerTurn + player.nextTurnBonusHours;
+  let base = gameConstants.baseWorkHoursPerTurn + player.nextTurnBonusHours;
+  if (state.activeEventFlags.firefightingPlayerId === player.id) {
+    base = Math.max(0, base - 16);
+    state.activeEventFlags.firefightingPlayerId = null;
+  }
   player.workHoursBudget = base;
   player.workHoursRemaining = base;
   player.nextTurnBonusHours = 0;
   player.usedOvertime = false;
+
+  // E-08：跳过执行阶段
+  if (state.activeEventFlags.skipExecutePlayerId === player.id) {
+    state.activeEventFlags.skipExecutePlayerId = null;
+    state.turnPhase = "end";
+    return;
+  }
 
   state.turnPhase = "execute";
 }
@@ -76,6 +107,7 @@ export function runPlanPhase(state: GameState): void {
 /** 执行阶段结束 → 收尾 */
 export function endExecutePhase(state: GameState): void {
   assertNoPendingDarkBid(state);
+  assertNoPendingInteraction(state);
   if (state.turnPhase !== "execute") {
     throw new Error("Not in execute phase");
   }
@@ -85,9 +117,12 @@ export function endExecutePhase(state: GameState): void {
 /** 收尾：清零未用工时，推进到下一位玩家的抽卡（或下一 Round） */
 export function finishEndPhase(state: GameState): void {
   assertNoPendingDarkBid(state);
+  assertNoPendingInteraction(state);
   if (state.turnPhase !== "end") {
     throw new Error("Not in end phase");
   }
+
+  resolveEndPhaseEventEffects(state);
 
   const player = getPlayer(state, getCurrentPlayerId(state));
   player.workHoursRemaining = 0;
@@ -95,13 +130,14 @@ export function finishEndPhase(state: GameState): void {
 
   const nextIndex = state.currentPlayerIndex + 1;
   if (nextIndex >= state.playerOrder.length) {
-    // Round 结束：简化处理 — 进入下一 Round，不在此展开 Season/事件
+    // Round 结束：进入下一 Round，须重新翻事件
     state.currentPlayerIndex = 0;
     state.round += 1;
     for (const p of state.players) {
       p.contributedThisRound = false;
     }
     state.roundContributors = new Set();
+    resetEventFlagsForNewRound(state);
     if (state.round > gameConstants.roundsPerSeason) {
       state.round = 1;
       state.season += 1;

@@ -1,12 +1,16 @@
 "use client";
 
-import { getActionCard } from "@rs/game-data";
+import { getActionCard, getEventCard } from "@rs/game-data";
 import {
   applyAction,
   createGame,
   forceCatchUpProgressAttempt,
+  forceFlipEvent,
   getCurrentPlayerId,
   listLegalActions,
+  setupC12Demo,
+  setupC13StealDemo,
+  setupC14CounterDemo,
 } from "@rs/rules-engine";
 import type { GameState, LegalAction, TurnPhase } from "@rs/shared";
 import { useMemo, useState } from "react";
@@ -41,13 +45,36 @@ function cloneState(state: GameState): GameState {
     pendingProgressSettlement: state.pendingProgressSettlement
       ? { ...state.pendingProgressSettlement }
       : null,
+    pendingPerformanceSettlement: state.pendingPerformanceSettlement
+      ? {
+          ...state.pendingPerformanceSettlement,
+          collaboratorIds: [...state.pendingPerformanceSettlement.collaboratorIds],
+        }
+      : null,
     actionDeck: [...state.actionDeck],
     actionDiscard: [...state.actionDiscard],
     eventDeck: [...state.eventDeck],
     eventDiscard: [...state.eventDiscard],
+    activeEventFlags: { ...state.activeEventFlags },
     roundContributors: new Set(state.roundContributors),
     pendingInteraction: state.pendingInteraction
-      ? { ...state.pendingInteraction }
+      ? state.pendingInteraction.type === "C13_WINDOW"
+        ? {
+            ...state.pendingInteraction,
+            collaboratorIds: [...state.pendingInteraction.collaboratorIds],
+            passedIds: [...state.pendingInteraction.passedIds],
+          }
+        : {
+            ...state.pendingInteraction,
+            deferredSettlement: state.pendingInteraction.deferredSettlement
+              ? {
+                  ...state.pendingInteraction.deferredSettlement,
+                  collaboratorIds: [
+                    ...state.pendingInteraction.deferredSettlement.collaboratorIds,
+                  ],
+                }
+              : undefined,
+          }
       : null,
     usedRequirementIds: [...state.usedRequirementIds],
     milestones: state.milestones.map((m) => ({ ...m })),
@@ -61,7 +88,7 @@ function cloneState(state: GameState): GameState {
 
 export default function PlayShellPage() {
   const [screen, setScreen] = useState<Screen>("setup");
-  const [playerCount, setPlayerCount] = useState(3);
+  const [playerCount, setPlayerCount] = useState(4);
   const [state, setState] = useState<GameState | null>(null);
   const [activeSeat, setActiveSeat] = useState("p1");
   const [log, setLog] = useState<string[]>([]);
@@ -87,7 +114,7 @@ export default function PlayShellPage() {
         requirementId: "R-01",
         modules: {
           darkBid: true,
-          interactionCards: false,
+          interactionCards: true,
           hiddenOkr: false,
           continuousSprint: false,
         },
@@ -97,7 +124,7 @@ export default function PlayShellPage() {
     setState(game);
     setActiveSeat(game.playerOrder[0]!);
     setScreen("play");
-    setLog([`对局开始 · 规则 ${RULES_VERSION} · ${playerCount} 人`]);
+    setLog([`对局开始 · 规则 ${RULES_VERSION} · ${playerCount} 人 · 事件+互动`]);
     setError(null);
   }
 
@@ -128,11 +155,46 @@ export default function PlayShellPage() {
   function runCatchUpDemo() {
     if (!state) return;
     const draft = cloneState(state);
-    // Ensure we are in execute as p1 for the demo
     draft.currentPlayerIndex = 0;
     const result = forceCatchUpProgressAttempt(draft, "p1", 25);
     setActiveSeat("p1");
     commit(draft, result.events);
+  }
+
+  function runFlipEventDemo() {
+    if (!state) return;
+    const draft = cloneState(state);
+    draft.currentPlayerIndex = 0;
+    const events = forceFlipEvent(draft, "E-04");
+    setActiveSeat("p1");
+    commit(draft, events);
+  }
+
+  function runC12Demo() {
+    if (!state) return;
+    const draft = cloneState(state);
+    setupC12Demo(draft);
+    setActiveSeat("p1");
+    commit(draft, [
+      "演示：C-12 甩锅 — 有个人债/Bug，公共债按钮灰显「仅个人债/Bug」",
+      "打出后会打开不可跳过的 C-14 窗",
+    ]);
+  }
+
+  function runC13Demo() {
+    if (!state) return;
+    const draft = cloneState(state);
+    const result = setupC13StealDemo(draft);
+    setActiveSeat(draft.playerOrder[draft.playerOrder.length - 1]!);
+    commit(draft, result.events);
+  }
+
+  function runC14Demo() {
+    if (!state) return;
+    const draft = cloneState(state);
+    const events = setupC14CounterDemo(draft);
+    setActiveSeat("p2");
+    commit(draft, events);
   }
 
   if (screen === "setup") {
@@ -141,7 +203,7 @@ export default function PlayShellPage() {
         <header className="hero">
           <p className="eyebrow">Requirement Storm</p>
           <h1>需求风暴</h1>
-          <p className="lede">M1 最小可玩壳 · 本地多座位 · 规则 {RULES_VERSION}</p>
+          <p className="lede">事件 + 互动 · 本地多座位 · 规则 {RULES_VERSION}</p>
         </header>
 
         <section className="setup">
@@ -161,7 +223,7 @@ export default function PlayShellPage() {
           </label>
           <div className="rules-box">
             <div>规则版本：<strong>{RULES_VERSION}</strong></div>
-            <div>模块：暗标冲刺（FIX-01 / 跨线补开）</div>
+            <div>模块：暗标 · 事件牌 · 互动卡 C-12～C-14</div>
             <div>模式：本机多座位（非联机大厅）</div>
           </div>
           <button type="button" className="primary" onClick={startGame}>
@@ -175,8 +237,10 @@ export default function PlayShellPage() {
   if (!state) return null;
 
   const pending = state.pendingDarkBid;
+  const interaction = state.pendingInteraction;
   const activePlayer = state.players.find((p) => p.id === activeSeat)!;
   const currentPlayer = state.players.find((p) => p.id === currentPlayerId);
+  const eventDef = state.currentEventId ? getEventCard(state.currentEventId) : null;
 
   return (
     <main className="shell play">
@@ -187,6 +251,7 @@ export default function PlayShellPage() {
         </div>
         <div className="muted">
           R{state.round} · S{state.season} · 进度 {state.progress}/{state.totalProgressTarget}
+          {state.publicDebt > 0 ? ` · 公共债 ${state.publicDebt}` : ""}
         </div>
         <button type="button" className="ghost" onClick={() => setScreen("setup")}>
           回开局
@@ -210,14 +275,55 @@ export default function PlayShellPage() {
           {activeSeat === currentPlayerId ? "（正是你操作的座位）" : ""}
         </p>
         <p className="muted">
+          事件：
+          {!state.eventFlippedThisRound
+            ? "尚未翻开（必须先翻 1 张，才能抽卡/互动）"
+            : `${state.currentEventId} ${eventDef?.name ?? ""} — ${eventDef?.effectText ?? ""}`}
+        </p>
+        <p className="muted">
           你能做什么：
-          {pending && !pending.resolved
-            ? pending.isCatchUp
-              ? "必须补开暗标，不能跳过；结算已挂起"
-              : "先完成暗标出价，才能继续"
-            : `${PHASE_LABEL[state.turnPhase]}阶段可用动作见下方`}
+          {interaction?.type === "C14"
+            ? "必须响应 C-14，不能跳过"
+            : interaction?.type === "C13_WINDOW"
+              ? "跨线后 C-13 窗：可抢功或弃权（绩效尚未结算）"
+              : pending && !pending.resolved
+                ? pending.isCatchUp
+                  ? "必须补开暗标，不能跳过；结算已挂起"
+                  : "先完成暗标出价，才能继续"
+                : !state.eventFlippedThisRound
+                  ? "先翻本 Round 事件牌"
+                  : `${PHASE_LABEL[state.turnPhase]}阶段可用动作见下方`}
         </p>
       </section>
+
+      {!state.eventFlippedThisRound && (
+        <section className="interrupt event-gate" role="alertdialog" aria-label="翻事件">
+          <h2>必须翻 1 张事件牌</h2>
+          <p>本 Round 开始尚未翻事件；翻开前不能进入抽卡/互动。</p>
+        </section>
+      )}
+
+      {interaction?.type === "C14" && (
+        <section className="interrupt" role="alertdialog" aria-label="C-14 响应">
+          <h2>必须响应 C-14，不能跳过</h2>
+          <p>
+            {interaction.sourceId} 的 {interaction.sourceCardId} 针对{" "}
+            <strong>{interaction.targetId}</strong>
+            。被针对者须打出 C-14 或放弃以关闭窗口，然后才结算。
+          </p>
+        </section>
+      )}
+
+      {interaction?.type === "C13_WINDOW" && (
+        <section className="interrupt c13" role="alertdialog" aria-label="C-13 窗">
+          <h2>跨线 C-13 窗（绩效挂起）</h2>
+          <p>
+            里程碑 <strong>{interaction.milestoneId}</strong> 突破者{" "}
+            <strong>{interaction.breakerId}</strong>
+            。可打 C-13（蹭协作者 / 截 1 绩效）或弃权；全员弃权后结算绩效。
+          </p>
+        </section>
+      )}
 
       {pending && !pending.resolved && (
         <section className="interrupt" role="alertdialog" aria-label="强制暗标">
@@ -275,7 +381,8 @@ export default function PlayShellPage() {
         <p className="muted">
           操作中：{activePlayer.name} · 手牌 {activePlayer.hand.length} · 工时{" "}
           {activePlayer.workHoursRemaining}/{activePlayer.workHoursBudget} · 绩效{" "}
-          {activePlayer.performance}
+          {activePlayer.performance} · 个人债 {activePlayer.personalDebt} · Bug{" "}
+          {activePlayer.personalBugs}
         </p>
         {state.turnPhase === "execute" && activeSeat === currentPlayerId && (
           <ul className="hand">
@@ -308,9 +415,23 @@ export default function PlayShellPage() {
             </button>
           ))}
         </div>
-        <button type="button" className="demo" onClick={runCatchUpDemo}>
-          演示：跨线补开（进度22 +25）
-        </button>
+        <div className="demo-row">
+          <button type="button" className="demo" onClick={runFlipEventDemo}>
+            演示：翻事件（E-04）
+          </button>
+          <button type="button" className="demo" onClick={runC12Demo}>
+            演示：甩锅 C-12
+          </button>
+          <button type="button" className="demo" onClick={runC13Demo}>
+            演示：抢功 C-13
+          </button>
+          <button type="button" className="demo" onClick={runC14Demo}>
+            演示：反制 C-14
+          </button>
+          <button type="button" className="demo" onClick={runCatchUpDemo}>
+            演示：跨线补开
+          </button>
+        </div>
       </section>
 
       <section className="log">

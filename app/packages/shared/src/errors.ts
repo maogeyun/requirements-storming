@@ -9,6 +9,12 @@ export enum ErrorCode {
   INVALID_ACTION = "INVALID_ACTION",
   /** 强制暗标补开未完成，不可跳过结算 */
   DARK_BID_REQUIRED = "DARK_BID_REQUIRED",
+  /** Round 开始必须先翻 1 张事件牌 */
+  EVENT_FLIP_REQUIRED = "EVENT_FLIP_REQUIRED",
+  /** C-14 响应窗不可跳过 */
+  C14_RESPONSE_REQUIRED = "C14_RESPONSE_REQUIRED",
+  /** C-12 仅可甩个人债/Bug */
+  PUBLIC_DEBT_REJECTED = "PUBLIC_DEBT_REJECTED",
   WRONG_PHASE = "WRONG_PHASE",
   NOT_YOUR_TURN = "NOT_YOUR_TURN",
 }

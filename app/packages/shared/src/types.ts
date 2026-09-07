@@ -139,6 +139,53 @@ export interface PendingProgressSettlement {
   progressGain: number;
 }
 
+/**
+ * 跨线后绩效尚未发放：等 C-13 / C-14 窗口关闭后再结算（防与暗标双重结算）。
+ */
+export interface PendingPerformanceSettlement {
+  milestoneId: MilestoneId;
+  breakerId: string;
+  collaboratorIds: string[];
+}
+
+/** 本 Round 生效的事件持续效果（收尾阶段按需清除） */
+export interface ActiveEventFlags {
+  /** E-05：本 Round 第一次突破绩效翻倍 */
+  doubleFirstMilestoneThisRound: boolean;
+  /** E-05 是否已触发翻倍 */
+  firstMilestoneDoubled: boolean;
+  /** E-08：绩效最低者跳过下个 Turn 执行 */
+  skipExecutePlayerId: string | null;
+  /** E-02：翻开者本 Turn 规划时 -16 工时 */
+  firefightingPlayerId: string | null;
+  /** E-03：临时轨道剩余进度 */
+  sideTrackRemaining: number;
+}
+
+/**
+ * 互动响应窗：
+ * - C13_WINDOW：跨线后、绩效结算前，可打 C-13 或弃权
+ * - C14：被针对后必须响应（打出或放弃），不可跳过窗口
+ */
+export type PendingInteraction =
+  | {
+      type: "C13_WINDOW";
+      milestoneId: MilestoneId;
+      breakerId: string;
+      collaboratorIds: string[];
+      passedIds: string[];
+    }
+  | {
+      type: "C14";
+      sourceCardId: "C-12" | "C-13";
+      sourceId: string;
+      targetId: string;
+      milestoneId: MilestoneId | null;
+      dumpKind?: "debt" | "bug";
+      c13Mode?: "hitch" | "steal";
+      deferredSettlement?: PendingPerformanceSettlement;
+    };
+
 export interface GameState {
   config: GameConfig;
   constants: GameConstants;
@@ -160,21 +207,21 @@ export interface GameState {
   pendingDarkBid: DarkBidState | null;
   /** 补开暗标未完成前的挂起进度结算 */
   pendingProgressSettlement: PendingProgressSettlement | null;
+  /** 跨线绩效挂起（互动窗未关前不发放） */
+  pendingPerformanceSettlement: PendingPerformanceSettlement | null;
   actionDeck: string[];
   actionDiscard: string[];
   eventDeck: string[];
   eventDiscard: string[];
   currentEventId: string | null;
+  /** 本 Round 是否已翻事件（未翻不可进入互动/抽卡推进） */
+  eventFlippedThisRound: boolean;
+  activeEventFlags: ActiveEventFlags;
   publicDebt: number;
   /** 本 Round 加过进度的玩家 */
   roundContributors: Set<string>;
-  /** 待响应：C-13 目标等 */
-  pendingInteraction: {
-    type: "C-13" | "C-14";
-    sourceId: string;
-    targetId: string;
-    milestoneId: MilestoneId;
-  } | null;
+  /** 待响应：C-13 窗 / C-14 必答窗 */
+  pendingInteraction: PendingInteraction | null;
   /** 暗标总消耗（FIX-05 追踪） */
   darkBidTotalSpent: number;
   usedRequirementIds: string[];
@@ -187,11 +234,21 @@ export type GameAction =
   | { type: "START_TURN" }
   | { type: "DRAW_TO_HAND_LIMIT" }
   | { type: "CONFIRM_PLAN" }
-  | { type: "PLAY_CARD"; playerId: string; cardId: string; targets?: string[] }
+  | { type: "FLIP_EVENT" }
+  | {
+      type: "PLAY_CARD";
+      playerId: string;
+      cardId: string;
+      targets?: string[];
+      /** C-12：甩个人债或 Bug（不可甩公共债） */
+      dumpKind?: "debt" | "bug";
+    }
   | { type: "SUBMIT_DARK_BID"; playerId: string; amount: number }
   | { type: "RESOLVE_DARK_BID"; crosserId: string }
   | { type: "RESPOND_C13"; playerId: string }
+  | { type: "PASS_C13"; playerId: string }
   | { type: "RESPOND_C14"; playerId: string; sourceId: string }
+  | { type: "DECLINE_C14"; playerId: string }
   | { type: "END_EXECUTE" }
   | { type: "FINISH_END_PHASE" }
   | { type: "END_TURN" }

@@ -17,6 +17,7 @@ import {
   applyAction,
   attemptProgressGain,
   forceCatchUpProgressAttempt,
+  forceFlipEvent,
   listLegalActions,
   playSkillCardWithBids,
 } from "./actions";
@@ -38,6 +39,7 @@ function makeDarkBidState(progress: number): GameState {
   });
   state.progress = progress;
   state.turnPhase = "execute";
+  state.eventFlippedThisRound = true;
   for (const player of state.players) {
     player.workHoursRemaining = gameConstants.baseWorkHoursPerTurn;
     player.workHoursBudget = gameConstants.baseWorkHoursPerTurn;
@@ -179,6 +181,12 @@ describe("Turn 四阶段", () => {
 
     expect(state.turnPhase).toBe("draw");
     expect(getCurrentPlayerId(state)).toBe("p1");
+    expect(state.eventFlippedThisRound).toBe(false);
+
+    forceFlipEvent(state, "E-05");
+    expect(state.eventFlippedThisRound).toBe(true);
+    expect(state.currentEventId).toBe("E-05");
+    expect(state.activeEventFlags.doubleFirstMilestoneThisRound).toBe(true);
 
     expect(applyAction(state, { type: "DRAW_TO_HAND_LIMIT" }).ok).toBe(true);
     expect(state.turnPhase).toBe("plan");
@@ -194,13 +202,29 @@ describe("Turn 四阶段", () => {
     expect(state.turnPhase).toBe("draw");
     expect(getCurrentPlayerId(state)).toBe("p2");
 
-    // second player full cycle
+    // second player full cycle (same Round — event already flipped)
     applyAction(state, { type: "DRAW_TO_HAND_LIMIT" });
     applyAction(state, { type: "CONFIRM_PLAN" });
     applyAction(state, { type: "END_EXECUTE" });
     applyAction(state, { type: "FINISH_END_PHASE" });
     expect(getCurrentPlayerId(state)).toBe("p1");
     expect(state.round).toBe(2);
+    expect(state.eventFlippedThisRound).toBe(false);
+  });
+
+  it("未翻事件不可抽卡/互动", () => {
+    const state = createGame({
+      playerNames: ["A", "B"],
+      config: { requirementId: "R-01", modules: { darkBid: true, interactionCards: true, hiddenOkr: false, continuousSprint: false } },
+      seed: 3,
+    });
+    const blocked = applyAction(state, { type: "DRAW_TO_HAND_LIMIT" });
+    expect(blocked.ok).toBe(false);
+    if (!blocked.ok) expect(blocked.error).toMatch(/事件/);
+
+    const legal = listLegalActions(state, "p1");
+    expect(legal.find((a) => a.action.type === "FLIP_EVENT")?.enabled).toBe(true);
+    expect(legal.find((a) => a.label === "互动卡")?.enabled).toBe(false);
   });
 });
 

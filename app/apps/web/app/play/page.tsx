@@ -27,6 +27,11 @@ const RULES_VERSION = "v1.2";
 
 type Screen = "setup" | "play";
 
+function seatLabel(state: GameState, playerId: string | null | undefined): string {
+  if (!playerId) return "—";
+  return state.players.find((p) => p.id === playerId)?.displayName ?? "—";
+}
+
 function cloneState(state: GameState): GameState {
   return {
     ...state,
@@ -51,6 +56,10 @@ function cloneState(state: GameState): GameState {
           collaboratorIds: [...state.pendingPerformanceSettlement.collaboratorIds],
         }
       : null,
+    pendingPerformanceSettlementQueue: state.pendingPerformanceSettlementQueue.map((item) => ({
+      ...item,
+      collaboratorIds: [...item.collaboratorIds],
+    })),
     actionDeck: [...state.actionDeck],
     actionDiscard: [...state.actionDiscard],
     eventDeck: [...state.eventDeck],
@@ -124,7 +133,10 @@ export default function PlayShellPage() {
     setState(game);
     setActiveSeat(game.playerOrder[0]!);
     setScreen("play");
-    setLog([`对局开始 · 规则 ${RULES_VERSION} · ${playerCount} 人 · 事件+互动`]);
+    setLog([
+      `对局开始 · 规则 ${RULES_VERSION} · ${playerCount} 人 · 事件+互动`,
+      `座位：${game.players.map((p) => p.displayName).join("、")}`,
+    ]);
     setError(null);
   }
 
@@ -156,9 +168,13 @@ export default function PlayShellPage() {
     if (!state) return;
     const draft = cloneState(state);
     draft.currentPlayerIndex = 0;
+    const first = seatLabel(draft, "p1");
     const result = forceCatchUpProgressAttempt(draft, "p1", 25);
     setActiveSeat("p1");
-    commit(draft, result.events);
+    commit(draft, [
+      `演示：跨线补开 — 由 ${first} 推进进度`,
+      ...result.events,
+    ]);
   }
 
   function runFlipEventDemo() {
@@ -167,7 +183,7 @@ export default function PlayShellPage() {
     draft.currentPlayerIndex = 0;
     const events = forceFlipEvent(draft, "E-04");
     setActiveSeat("p1");
-    commit(draft, events);
+    commit(draft, [`演示：翻事件 — ${seatLabel(draft, "p1")}`, ...events]);
   }
 
   function runC12Demo() {
@@ -176,7 +192,8 @@ export default function PlayShellPage() {
     setupC12Demo(draft);
     setActiveSeat("p1");
     commit(draft, [
-      "演示：C-12 甩锅 — 有个人债/Bug，公共债按钮灰显「仅个人债/Bug」",
+      `演示：甩锅 C-12 — ${seatLabel(draft, "p1")} → ${seatLabel(draft, "p2")}`,
+      "有个人债/Bug；公共债按钮灰显「仅个人债/Bug」",
       "打出后会打开不可跳过的 C-14 窗",
     ]);
   }
@@ -185,8 +202,12 @@ export default function PlayShellPage() {
     if (!state) return;
     const draft = cloneState(state);
     const result = setupC13StealDemo(draft);
-    setActiveSeat(draft.playerOrder[draft.playerOrder.length - 1]!);
-    commit(draft, result.events);
+    const actor = draft.playerOrder[draft.playerOrder.length - 1]!;
+    setActiveSeat(actor);
+    commit(draft, [
+      `演示：抢功 C-13 — 切换到 ${seatLabel(draft, actor)}`,
+      ...result.events,
+    ]);
   }
 
   function runC14Demo() {
@@ -194,7 +215,10 @@ export default function PlayShellPage() {
     const draft = cloneState(state);
     const events = setupC14CounterDemo(draft);
     setActiveSeat("p2");
-    commit(draft, events);
+    commit(draft, [
+      `演示：反制 C-14 — 切换到被针对的 ${seatLabel(draft, "p2")}`,
+      ...events,
+    ]);
   }
 
   if (screen === "setup") {
@@ -225,6 +249,7 @@ export default function PlayShellPage() {
             <div>规则版本：<strong>{RULES_VERSION}</strong></div>
             <div>模块：暗标 · 事件牌 · 互动卡 C-12～C-14</div>
             <div>模式：本机多座位（非联机大厅）</div>
+            <div className="muted">座位展示名示例：座位 1 / 产品</div>
           </div>
           <button type="button" className="primary" onClick={startGame}>
             开始
@@ -241,6 +266,7 @@ export default function PlayShellPage() {
   const activePlayer = state.players.find((p) => p.id === activeSeat)!;
   const currentPlayer = state.players.find((p) => p.id === currentPlayerId);
   const eventDef = state.currentEventId ? getEventCard(state.currentEventId) : null;
+  const queuedCrossCount = state.pendingPerformanceSettlementQueue.length;
 
   return (
     <main className="shell play">
@@ -271,7 +297,7 @@ export default function PlayShellPage() {
 
       <section className="status">
         <p>
-          当前该谁：<strong>{currentPlayer?.name ?? "—"}</strong>
+          当前该谁：<strong>{currentPlayer?.displayName ?? "—"}</strong>
           {activeSeat === currentPlayerId ? "（正是你操作的座位）" : ""}
         </p>
         <p className="muted">
@@ -285,7 +311,9 @@ export default function PlayShellPage() {
           {interaction?.type === "C14"
             ? "必须响应 C-14，不能跳过"
             : interaction?.type === "C13_WINDOW"
-              ? "跨线后 C-13 窗：可抢功或弃权（绩效尚未结算）"
+              ? queuedCrossCount > 0
+                ? `跨线后 C-13 窗：可抢功或弃权（绩效尚未结算；另有 ${queuedCrossCount} 条排队）`
+                : "跨线后 C-13 窗：可抢功或弃权（绩效尚未结算）"
               : pending && !pending.resolved
                 ? pending.isCatchUp
                   ? "必须补开暗标，不能跳过；结算已挂起"
@@ -307,8 +335,8 @@ export default function PlayShellPage() {
         <section className="interrupt" role="alertdialog" aria-label="C-14 响应">
           <h2>必须响应 C-14，不能跳过</h2>
           <p>
-            {interaction.sourceId} 的 {interaction.sourceCardId} 针对{" "}
-            <strong>{interaction.targetId}</strong>
+            {seatLabel(state, interaction.sourceId)} 的 {interaction.sourceCardId} 针对{" "}
+            <strong>{seatLabel(state, interaction.targetId)}</strong>
             。被针对者须打出 C-14 或放弃以关闭窗口，然后才结算。
           </p>
         </section>
@@ -319,8 +347,11 @@ export default function PlayShellPage() {
           <h2>跨线 C-13 窗（绩效挂起）</h2>
           <p>
             里程碑 <strong>{interaction.milestoneId}</strong> 突破者{" "}
-            <strong>{interaction.breakerId}</strong>
+            <strong>{seatLabel(state, interaction.breakerId)}</strong>
             。可打 C-13（蹭协作者 / 截 1 绩效）或弃权；全员弃权后结算绩效。
+            {queuedCrossCount > 0
+              ? ` 另有 ${queuedCrossCount} 条跨线排队，本线结算后继续开窗。`
+              : ""}
           </p>
         </section>
       )}
@@ -354,8 +385,8 @@ export default function PlayShellPage() {
               已出价：
               {state.playerOrder
                 .map((id) => {
-                  const name = state.players.find((p) => p.id === id)?.name ?? id;
-                  return `${name}${id in pending.bids ? "✓" : "…"}`;
+                  const label = seatLabel(state, id);
+                  return `${label}${id in pending.bids ? "✓" : "…"}`;
                 })
                 .join("  ")}
             </p>
@@ -373,13 +404,13 @@ export default function PlayShellPage() {
               className={`seat ${activeSeat === p.id ? "active" : ""}`}
               onClick={() => setActiveSeat(p.id)}
             >
-              {p.name}
+              {p.displayName}
               {p.id === currentPlayerId ? " · 当前" : ""}
             </button>
           ))}
         </div>
         <p className="muted">
-          操作中：{activePlayer.name} · 手牌 {activePlayer.hand.length} · 工时{" "}
+          操作中：{activePlayer.displayName} · 手牌 {activePlayer.hand.length} · 工时{" "}
           {activePlayer.workHoursRemaining}/{activePlayer.workHoursBudget} · 绩效{" "}
           {activePlayer.performance} · 个人债 {activePlayer.personalDebt} · Bug{" "}
           {activePlayer.personalBugs}

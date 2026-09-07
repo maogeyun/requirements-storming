@@ -31,6 +31,9 @@ export function assertNoPendingInteraction(state: GameState): void {
   if (state.pendingPerformanceSettlement) {
     throw new Error("跨线绩效尚未结算");
   }
+  if (state.pendingPerformanceSettlementQueue.length > 0) {
+    throw new Error("跨线绩效队列未清空：后续线仍须走 C-13 窗");
+  }
 }
 
 /** 抽卡阶段：手牌补至上限，然后进入规划 */

@@ -79,6 +79,8 @@ export type GameModuleFlags = {
 export interface PlayerState {
   id: string;
   name: string;
+  /** UI 展示名（如「座位 1 / 产品」）；可见文案一律用此字段，勿用 id */
+  displayName: string;
   performance: number;
   hand: string[];
   okrId: string | null;
@@ -209,6 +211,11 @@ export interface GameState {
   pendingProgressSettlement: PendingProgressSettlement | null;
   /** 跨线绩效挂起（互动窗未关前不发放） */
   pendingPerformanceSettlement: PendingPerformanceSettlement | null;
+  /**
+   * 同次跨多线时，后续里程碑的绩效结算队列。
+   * 当前线 C-13→C-14→结算完成后，再按序打开下一线的 C-13 窗。
+   */
+  pendingPerformanceSettlementQueue: PendingPerformanceSettlement[];
   actionDeck: string[];
   actionDiscard: string[];
   eventDeck: string[];

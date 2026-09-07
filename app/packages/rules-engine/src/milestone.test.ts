@@ -240,6 +240,12 @@ describe("createGame", () => {
     expect(state.totalProgressTarget).toBe(200);
     expect(state.players.every((p) => p.hand.length === 5)).toBe(true);
     expect(state.pendingProgressSettlement).toBeNull();
+    expect(state.players.map((p) => p.displayName)).toEqual([
+      "座位 1 / 产品",
+      "座位 2 / 设计",
+      "座位 3 / 研发",
+      "座位 4 / 测试",
+    ]);
   });
 
   it("R-06 开局 3 公共技术债", () => {

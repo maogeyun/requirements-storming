@@ -28,6 +28,7 @@ function toPublicSummary(player: PlayerState): PublicPlayerSummary {
   return {
     id: player.id,
     name: player.name,
+    displayName: player.displayName,
     performance: player.performance,
     handCount: player.hand.length,
     personalBugs: player.personalBugs,

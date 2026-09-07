@@ -123,6 +123,35 @@ button.demo {
   color: var(--warn);
 }
 
+.demo-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+
+.demo-row .demo {
+  margin-top: 0;
+}
+
+.interrupt.c13 {
+  border-color: var(--warn);
+  background: rgba(232, 184, 74, 0.1);
+}
+
+.interrupt.c13 h2 {
+  color: var(--warn);
+}
+
+.interrupt.event-gate {
+  border-color: var(--accent);
+  background: rgba(62, 207, 142, 0.08);
+}
+
+.interrupt.event-gate h2 {
+  color: var(--accent);
+}
+
 .bar {
   display: flex;
   flex-wrap: wrap;

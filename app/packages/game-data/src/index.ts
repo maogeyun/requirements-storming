@@ -51,9 +51,21 @@ export const requirementCards = requirementCardsJson as RequirementCardDefinitio
 export const okrCards = okrCardsJson as OkrCardDefinition[];
 
 const actionCardMap = new Map(actionCards.map((c) => [c.id, c]));
+const eventCardMap = new Map(eventCards.map((c) => [c.id, c]));
 
 export function getActionCard(id: string): ActionCardWithMeta | undefined {
   return actionCardMap.get(id);
+}
+
+export function getEventCard(id: string): EventCardDefinition | undefined {
+  return eventCardMap.get(id);
+}
+
+export const INTERACTION_CARD_IDS = ["C-12", "C-13", "C-14"] as const;
+export type InteractionCardId = (typeof INTERACTION_CARD_IDS)[number];
+
+export function isInteractionCardId(id: string): id is InteractionCardId {
+  return (INTERACTION_CARD_IDS as readonly string[]).includes(id);
 }
 
 export function buildActionDeck(): string[] {

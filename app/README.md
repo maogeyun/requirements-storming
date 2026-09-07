@@ -73,7 +73,9 @@ pnpm dev:web      # Next.js @ localhost:3000
 - [x] Turn 四阶段完整流程（draw → plan → execute → end）
 - [x] 跨线补开可中断状态 `pendingDarkBid` + `pendingProgressSettlement`
 - [x] Web 最小可玩壳 `/play`（本机多座位）
-- [ ] 事件牌 / 互动链 / Season / Sprint / OKR
+- [x] 事件牌：每 Round 强制翻 1 张 + 即时/持续效果
+- [x] 互动链 C-12～C-14：季限、公共债拒绝、C-14 必答窗、暗标并发不双结
+- [ ] Season 完整结算 / Sprint 连续 / 隐藏 OKR 全量
 
 ### M2+（待做）
 
@@ -90,7 +92,11 @@ pnpm --filter @rs/web dev
 # 打开 http://localhost:3000/play
 ```
 
-手动验收：开局确认规则 v1.2 → 推进四阶段 →「演示：跨线补开」验证强制暗标不可跳过。
+手动验收：
+
+1. 开局 → **必须翻事件** → 四阶段
+2. 演示：翻事件 / 甩锅 C-12（公共债灰显「仅个人债/Bug」）/ 抢功 C-13 / 反制 C-14 / 跨线补开
+3. C-14 窗不可跳过；暗标与 C-13 并发时绩效只结一次
 
 ## 设计文档
 

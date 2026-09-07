@@ -1,5 +1,6 @@
 import type { DarkBidState, GameState, MilestoneDefinition, MilestoneId } from "@rs/shared";
 import { getPlayer, getSprintZoneDistanceForState } from "./create-game";
+import { openC13Window } from "./interaction";
 
 export function distanceToMilestone(progress: number, threshold: number): number {
   return threshold - progress;
@@ -273,9 +274,28 @@ export function applyProgressGain(
   for (const milestone of crossed) {
     const breakerId = determineBreaker(state, playerId, milestone.id);
     const collaboratorIds = [...state.roundContributors].filter((id) => id !== breakerId);
-    settleMilestonePerformance(state, milestone, breakerId, collaboratorIds);
     settlements.push({ milestoneId: milestone.id, breakerId, collaboratorIds });
     clearPendingDarkBid(state);
+
+    // m-v11-02：互动开启时先开 C-13/C-14 窗，再结算绩效，避免与暗标双重结算
+    if (state.config.modules.interactionCards) {
+      if (!state.crossedMilestones.includes(milestone.id)) {
+        state.crossedMilestones.push(milestone.id);
+      }
+      if (!state.pendingInteraction && !state.pendingPerformanceSettlement) {
+        openC13Window(state, {
+          milestoneId: milestone.id,
+          breakerId,
+          collaboratorIds,
+        });
+      } else {
+        // 同次跨多线：后续里程碑在互动窗关闭后由调用方续结；此处先挂起到队列字段
+        // v1 简化：若已有窗，直接结算后续线（C-13 仅绑第一条）
+        settleMilestonePerformance(state, milestone, breakerId, collaboratorIds);
+      }
+    } else {
+      settleMilestonePerformance(state, milestone, breakerId, collaboratorIds);
+    }
   }
 
   if (state.progress >= state.totalProgressTarget) {

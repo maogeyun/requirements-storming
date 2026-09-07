@@ -161,10 +161,39 @@ export function clearPendingDarkBid(state: GameState): void {
   state.pendingDarkBid = null;
 }
 
+export function clearPendingProgressSettlement(state: GameState): void {
+  state.pendingProgressSettlement = null;
+}
+
 export interface MilestoneSettlement {
   milestoneId: MilestoneId;
   breakerId: string;
   collaboratorIds: string[];
+}
+
+/**
+ * 暗标全部提交后：结算押注 → 若有挂起跨线进度则执行结算。
+ * 未全部提交时抛错（不可跳过）。
+ */
+export function completeDarkBidAndSettle(state: GameState): MilestoneSettlement[] {
+  if (!state.pendingDarkBid || state.pendingDarkBid.resolved) {
+    throw new Error("No pending dark bid to complete");
+  }
+  if (!allPlayersBid(state)) {
+    throw new Error("Cannot settle: not all players have submitted dark bids (必须补开，不能跳过)");
+  }
+
+  resolveDarkBidBids(state);
+
+  const deferred = state.pendingProgressSettlement;
+  if (!deferred) {
+    return [];
+  }
+
+  resolveDarkBidPriorityOnTie(state, deferred.playerId);
+  const settlements = applyProgressGain(state, deferred.playerId, deferred.progressGain);
+  clearPendingProgressSettlement(state);
+  return settlements;
 }
 
 /** FIX-02 步骤 ①：暗标优先权确定突破者 */
@@ -203,6 +232,10 @@ export function settleMilestonePerformance(
   }
 }
 
+/**
+ * 应用进度增益并结算跨线里程碑。
+ * 若存在未解决的强制暗标（尤其是跨线补开），拒绝结算。
+ */
 export function applyProgressGain(
   state: GameState,
   playerId: string,
@@ -212,10 +245,26 @@ export function applyProgressGain(
     return [];
   }
 
+  const bid = state.pendingDarkBid;
+  if (bid && !bid.resolved) {
+    throw new Error("Cannot apply progress while dark bid is pending (必须补开，不能跳过)");
+  }
+
+  // Any unused milestone about to be crossed requires a resolved dark bid first.
+  const wouldCross = milestonesCrossedByGain(state.progress, gain, state.milestones).filter(
+    (m) => !state.darkBidUsed[m.id],
+  );
+  if (wouldCross.length > 0 && state.config.modules.darkBid) {
+    for (const milestone of wouldCross) {
+      if (!bid || !bid.resolved || bid.milestoneId !== milestone.id) {
+        throw new Error("Dark bid required before settlement (必须补开，不能跳过)");
+      }
+    }
+  }
+
   state.roundContributors.add(playerId);
   getPlayer(state, playerId).contributedThisRound = true;
 
-  const zoneDistance = getSprintZoneDistanceForState(state);
   const crossed = milestonesCrossedByGain(state.progress, gain, state.milestones);
   state.progress += gain;
 
@@ -233,6 +282,5 @@ export function applyProgressGain(
     state.gameOver = true;
   }
 
-  void zoneDistance;
   return settlements;
 }

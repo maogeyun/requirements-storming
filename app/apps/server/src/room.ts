@@ -2,6 +2,7 @@ import type * as Party from "partykit/server";
 import { createGame } from "@rs/rules-engine";
 import type {
   ClientMessage,
+  GameAction,
   GameState,
   LobbyPlayer,
   LobbyState,
@@ -11,11 +12,6 @@ import type {
 } from "@rs/shared";
 import { ErrorCode, roomConfigToGameConfig } from "@rs/shared";
 import { getDefaultRoomConfig, getPlayerView } from "./player-view.js";
-
-interface ConnectionMeta {
-  playerId: string | null;
-  playerName: string | null;
-}
 
 interface RoomStorage {
   phase: RoomPhase;
@@ -218,7 +214,7 @@ export default class GameRoom implements Party.Server {
     this.broadcastGameViews();
   }
 
-  private handleSubmitAction(action: ClientMessage & { type: "SUBMIT_ACTION" }["action"], sender: Party.Connection): void {
+  private handleSubmitAction(action: GameAction, sender: Party.Connection): void {
     const playerId = this.storage.connectionPlayers[sender.id];
     if (!playerId) {
       sendError(sender, ErrorCode.PLAYER_NOT_FOUND, "Join the room first");

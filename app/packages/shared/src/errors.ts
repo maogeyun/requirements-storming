@@ -7,6 +7,10 @@ export enum ErrorCode {
   INSUFFICIENT_PLAYERS = "INSUFFICIENT_PLAYERS",
   PLAYER_NOT_FOUND = "PLAYER_NOT_FOUND",
   INVALID_ACTION = "INVALID_ACTION",
+  /** 强制暗标补开未完成，不可跳过结算 */
+  DARK_BID_REQUIRED = "DARK_BID_REQUIRED",
+  WRONG_PHASE = "WRONG_PHASE",
+  NOT_YOUR_TURN = "NOT_YOUR_TURN",
 }
 
 export interface ErrorPayload {

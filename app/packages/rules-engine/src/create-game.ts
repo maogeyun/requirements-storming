@@ -86,6 +86,7 @@ export function createGame(options: CreateGameOptions): GameState {
     crossedMilestones: [],
     darkBidUsed: { M1: false, M2: false, M3: false, M4: false },
     pendingDarkBid: null,
+    pendingProgressSettlement: null,
     actionDeck,
     actionDiscard: [],
     eventDeck,

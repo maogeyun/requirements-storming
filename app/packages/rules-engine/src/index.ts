@@ -12,6 +12,7 @@ export * from "./turn";
 export * from "./events";
 export * from "./interaction";
 export * from "./okr";
+export * from "./sprint";
 export {
   applyAction,
   attemptProgressGain,
@@ -29,5 +30,6 @@ export {
   setupC14CounterDemo,
   setupMultiCrossDemo,
   setupOkrRevealDemo,
+  setupSprintAdvanceDemo,
 } from "./actions";
 export type { ApplyActionResult, ApplyResult } from "./actions";

@@ -21,7 +21,7 @@ import {
   submitDarkBid,
   type MilestoneSettlement,
 } from "./milestone";
-import { noteBugsCleared, noteCollabCardPlayed, noteOvertimeUsed, settleHiddenOkrs } from "./okr";
+import { finalizeGameIfComplete, noteBugsCleared, noteCollabCardPlayed, noteOvertimeUsed, settleHiddenOkrs } from "./okr";
 import {
   assertNoPendingDarkBid,
   assertNoPendingInteraction,
@@ -1234,6 +1234,41 @@ export function setupOkrRevealDemo(state: GameState): string[] {
     lines.push(`MVP：${getDisplayName(state, state.winnerId)}`);
   }
   return lines;
+}
+
+/**
+ * 演示：Sprint1 达标 → 进入 Sprint2（连续 Sprint）。
+ * 写入债/Bug/绩效后触发 finalize，验证结转与重置。
+ */
+export function setupSprintAdvanceDemo(state: GameState): string[] {
+  state.config.modules.continuousSprint = true;
+  state.config.sprintCount = Math.max(2, state.config.sprintCount);
+  state.config.modules.hiddenOkr = true;
+  state.sprint = 1;
+  state.progress = state.totalProgressTarget;
+  state.requirementId = state.requirementId || "R-01";
+  state.usedRequirementIds = [...new Set([state.requirementId, ...state.usedRequirementIds])];
+  state.publicDebt = 2;
+  state.crossedMilestones = ["M1", "M2", "M3", "M4"];
+  state.pendingInteraction = null;
+  state.pendingPerformanceSettlement = null;
+  state.pendingPerformanceSettlementQueue = [];
+  state.pendingDarkBid = null;
+  state.pendingProgressSettlement = null;
+  state.gameOver = false;
+  state.okrRevealed = false;
+  state.okrSettlements = null;
+
+  for (const [index, player] of state.players.entries()) {
+    player.performance = index === 0 ? 18 : index === 1 ? 14 : 8 - index;
+    player.personalDebt = index < 2 ? 1 : 0;
+    player.personalBugs = index === 0 ? 1 : 0;
+    player.bugsClearedTotal = index === 1 ? 3 : 1;
+    player.contributedThisRound = false;
+  }
+
+  const events = finalizeGameIfComplete(state);
+  return ["演示：连续 Sprint 切换", ...events];
 }
 
 export { rejectPublicDebtDump };

@@ -13,6 +13,7 @@ import {
   setupC14CounterDemo,
   setupMultiCrossDemo,
   setupOkrRevealDemo,
+  setupSprintAdvanceDemo,
 } from "@rs/rules-engine";
 import type { GameState, LegalAction, OkrEvaluation, TurnPhase } from "@rs/shared";
 import { useMemo, useState } from "react";
@@ -99,6 +100,13 @@ function cloneState(state: GameState): GameState {
           }
       : null,
     usedRequirementIds: [...state.usedRequirementIds],
+    sprintSwitchInfo: state.sprintSwitchInfo
+      ? {
+          ...state.sprintSwitchInfo,
+          cleared: [...state.sprintSwitchInfo.cleared],
+          carried: [...state.sprintSwitchInfo.carried],
+        }
+      : null,
     milestones: state.milestones.map((m) => ({ ...m })),
     config: {
       ...state.config,
@@ -202,7 +210,7 @@ export default function PlayShellPage() {
           darkBid: true,
           interactionCards: true,
           hiddenOkr: true,
-          continuousSprint: false,
+          continuousSprint: true,
         },
       },
       seed: Date.now() % 1_000_000,
@@ -211,9 +219,10 @@ export default function PlayShellPage() {
     setActiveSeat(game.playerOrder[0]!);
     setScreen("play");
     setLog([
-      `对局开始 · 规则 ${RULES_VERSION} · ${playerCount} 人 · 事件+互动+隐藏 OKR`,
+      `对局开始 · 规则 ${RULES_VERSION} · ${playerCount} 人 · 连续 Sprint×${game.config.sprintCount}`,
       `座位：${game.players.map((p) => p.displayName).join("、")}`,
-      "每人已暗抽 1 张 OKR（仅本座位可见）",
+      `Sprint 1/${game.config.sprintCount} · 需求 ${game.requirementId} · 目标进度 ${game.totalProgressTarget}`,
+      "每人已暗抽 1 张 OKR（仅本座位可见）；绩效/OKR 跨 Sprint 结转",
     ]);
     setError(null);
   }
@@ -314,13 +323,22 @@ export default function PlayShellPage() {
     commit(draft, events);
   }
 
+  function runSprintAdvanceDemo() {
+    if (!state) return;
+    const draft = cloneState(state);
+    const events = setupSprintAdvanceDemo(draft);
+    commit(draft, events);
+  }
+
   if (screen === "setup") {
     return (
       <main className="shell">
         <header className="hero">
           <p className="eyebrow">Requirement Storm</p>
           <h1>需求风暴</h1>
-          <p className="lede">事件 + 互动 + 隐藏 OKR · 本地多座位 · 规则 {RULES_VERSION}</p>
+          <p className="lede">
+            连续 Sprint×2 · 事件 + 互动 + 隐藏 OKR · 本地多座位 · 规则 {RULES_VERSION}
+          </p>
         </header>
 
         <section className="setup">
@@ -333,16 +351,16 @@ export default function PlayShellPage() {
             >
               {[2, 3, 4, 5].map((n) => (
                 <option key={n} value={n}>
-                  {n} 人
+                  {n} 人{n === 2 ? "（目标进度 100/Sprint）" : n === 4 ? "（默认）" : ""}
                 </option>
               ))}
             </select>
           </label>
           <div className="rules-box">
             <div>规则版本：<strong>{RULES_VERSION}</strong></div>
-            <div>模块：暗标 · 事件牌 · 互动卡 C-12～C-14 · 隐藏 OKR</div>
-            <div>模式：本机多座位（非联机大厅）</div>
-            <div className="muted">座位展示名示例：座位 1 / 产品 · OKR 仅本座位可见</div>
+            <div>模块：暗标 · 事件 · 互动 · 隐藏 OKR · <strong>连续 Sprint×2</strong></div>
+            <div>Sprint1 需求 R-01；达标后进度归零进入 Sprint2（禁重复需求）</div>
+            <div className="muted">绩效 / OKR 计数结转；债与 Bug 重置；系列末定 MVP</div>
           </div>
           <button type="button" className="primary" onClick={startGame}>
             开始
@@ -359,6 +377,10 @@ export default function PlayShellPage() {
   const activePlayer = state.players.find((p) => p.id === activeSeat)!;
   const currentPlayer = state.players.find((p) => p.id === currentPlayerId);
   const queuedCrossCount = state.pendingPerformanceSettlementQueue.length;
+  const switchInfo = state.sprintSwitchInfo;
+  const seriesLabel = state.config.modules.continuousSprint
+    ? `Sprint ${state.sprint}/${state.config.sprintCount}`
+    : `Sprint ${state.sprint}`;
 
   return (
     <main className="shell play">
@@ -368,14 +390,43 @@ export default function PlayShellPage() {
           <span className="muted"> · {RULES_VERSION}</span>
         </div>
         <div className="muted">
-          R{state.round} · S{state.season} · 进度 {state.progress}/{state.totalProgressTarget}
+          {seriesLabel} · {state.requirementId} · R{state.round} · S{state.season} · 进度{" "}
+          {state.progress}/{state.totalProgressTarget}
           {state.publicDebt > 0 ? ` · 公共债 ${state.publicDebt}` : ""}
-          {state.gameOver ? " · 终局" : ""}
+          {state.gameOver ? " · 系列终局" : ""}
         </div>
         <button type="button" className="ghost" onClick={() => setScreen("setup")}>
           回开局
         </button>
       </header>
+
+      <section className="sprint-strip" aria-label="连续 Sprint 状态">
+        <div>
+          <strong>{seriesLabel}</strong>
+          <span className="muted">
+            {" "}
+            · 需求 {state.requirementId}
+            {state.usedRequirementIds.length > 1
+              ? ` · 已用 ${state.usedRequirementIds.join("、")}`
+              : ""}
+          </span>
+        </div>
+        <p className="muted">
+          结转：绩效 / OKR 计数 · 重置：进度、债、Bug（切换时生效）
+        </p>
+        {switchInfo && (
+          <div className="sprint-hint" role="status">
+            <strong>
+              已切换 Sprint {switchInfo.fromSprint} → {switchInfo.toSprint}
+            </strong>
+            <span>
+              需求 {switchInfo.previousRequirementId} → {switchInfo.nextRequirementId}
+            </span>
+            <span>重置：{switchInfo.cleared.join("、")}</span>
+            <span>结转：{switchInfo.carried.join("、")}</span>
+          </div>
+        )}
+      </section>
 
       <section className="phases" aria-label="回合阶段">
         {PHASES.map((phase) => (
@@ -557,6 +608,9 @@ export default function PlayShellPage() {
           </button>
           <button type="button" className="demo" onClick={runOkrRevealDemo}>
             演示：总结算亮 OKR
+          </button>
+          <button type="button" className="demo" onClick={runSprintAdvanceDemo}>
+            演示：Sprint 切换
           </button>
         </div>
       </section>

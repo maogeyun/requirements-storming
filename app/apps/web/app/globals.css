@@ -189,8 +189,40 @@ button.demo {
 .seats,
 .actions,
 .log,
-.okr-panel {
+.okr-panel,
+.sprint-strip {
   margin-top: 1.25rem;
+}
+
+.sprint-strip {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 0.85rem 1rem;
+  background: rgba(10, 16, 14, 0.55);
+}
+
+.sprint-strip p {
+  margin: 0.35rem 0 0;
+}
+
+.sprint-hint {
+  margin-top: 0.65rem;
+  display: grid;
+  gap: 0.25rem;
+  font-size: 0.9rem;
+  color: var(--accent);
+  animation: sprint-fade 0.45s ease-out;
+}
+
+@keyframes sprint-fade {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .okr-row {

@@ -40,11 +40,21 @@ export function createGame(options: CreateGameOptions): GameState {
     throw new Error("Player count must be between 2 and 5");
   }
 
+  const base = createDefaultConfig(playerCount);
   const config: GameConfig = {
-    ...createDefaultConfig(playerCount),
+    ...base,
     ...options.config,
     playerCount,
+    modules: {
+      ...base.modules,
+      ...options.config?.modules,
+    },
   };
+
+  // 连续 Sprint：未显式指定局数时用常量默认（4p · 2 Sprint）
+  if (config.modules.continuousSprint && options.config?.sprintCount == null) {
+    config.sprintCount = gameConstants.defaultSprintCount;
+  }
 
   const rng = createRng(seed);
   const milestones = getMilestonesForPlayerCount(playerCount);
@@ -108,6 +118,7 @@ export function createGame(options: CreateGameOptions): GameState {
     pendingInteraction: null,
     darkBidTotalSpent: 0,
     usedRequirementIds: [requirementPick.item],
+    sprintSwitchInfo: null,
     gameOver: false,
     winnerId: null,
     okrRevealed: false,

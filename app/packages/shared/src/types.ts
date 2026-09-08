@@ -205,6 +205,18 @@ export type PendingInteraction =
       deferredSettlement?: PendingPerformanceSettlement;
     };
 
+/** 连续 Sprint 切换时的结转 / 重置提示（最小壳展示用） */
+export interface SprintSwitchInfo {
+  fromSprint: number;
+  toSprint: number;
+  previousRequirementId: string;
+  nextRequirementId: string;
+  /** 已重置项文案，如「进度」「个人技术债」 */
+  cleared: string[];
+  /** 已结转项文案，如「绩效」「OKR 计数器」 */
+  carried: string[];
+}
+
 export interface GameState {
   config: GameConfig;
   constants: GameConstants;
@@ -249,6 +261,8 @@ export interface GameState {
   /** 暗标总消耗（FIX-05 追踪） */
   darkBidTotalSpent: number;
   usedRequirementIds: string[];
+  /** 最近一次 Sprint 切换提示；尚未切换过为 null */
+  sprintSwitchInfo: SprintSwitchInfo | null;
   gameOver: boolean;
   winnerId: string | null;
   /** 总结算是否已亮出隐藏 OKR */

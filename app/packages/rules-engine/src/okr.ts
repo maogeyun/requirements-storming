@@ -1,6 +1,7 @@
 import { getOkrCard, isInteractionCardId, isTeamFoundationCollabId } from "@rs/game-data";
 import type { GameState, OkrEvaluation, PlayerState } from "@rs/shared";
 import { getDisplayName, getPlayer } from "./create-game";
+import { advanceToNextSprint, canAdvanceSprint } from "./sprint";
 
 /**
  * 记录协作卡打出（O-05）。
@@ -215,24 +216,41 @@ export function settleHiddenOkrs(state: GameState): OkrEvaluation[] {
   return results;
 }
 
-/** 终局触发：进度达标后亮 OKR（若模块开启）；有互动/绩效挂起时推迟亮牌 */
+function hasBlockingSettlement(state: GameState): boolean {
+  return (
+    Boolean(state.pendingInteraction) ||
+    Boolean(state.pendingPerformanceSettlement) ||
+    state.pendingPerformanceSettlementQueue.length > 0 ||
+    Boolean(state.pendingDarkBid && !state.pendingDarkBid.resolved) ||
+    Boolean(state.pendingProgressSettlement)
+  );
+}
+
+/**
+ * 终局 / Sprint 切换触发：进度达标后
+ * - 连续 Sprint 且未跑完 → 进下一 Sprint（不清整局）
+ * - 否则亮 OKR（若模块开启）并定系列 MVP
+ * 有互动/绩效挂起时推迟。
+ */
 export function finalizeGameIfComplete(state: GameState): string[] {
   const events: string[] = [];
   if (state.progress < state.totalProgressTarget) {
     return events;
   }
-  state.gameOver = true;
 
-  const blocked =
-    Boolean(state.pendingInteraction) ||
-    Boolean(state.pendingPerformanceSettlement) ||
-    state.pendingPerformanceSettlementQueue.length > 0 ||
-    Boolean(state.pendingDarkBid && !state.pendingDarkBid.resolved) ||
-    Boolean(state.pendingProgressSettlement);
-
-  if (blocked) {
+  if (hasBlockingSettlement(state)) {
+    // 连续 Sprint 中途不标 gameOver；末 Sprint / 单局仍标记终局等待挂起解除
+    if (!canAdvanceSprint(state)) {
+      state.gameOver = true;
+    }
     return events;
   }
+
+  if (canAdvanceSprint(state)) {
+    return advanceToNextSprint(state);
+  }
+
+  state.gameOver = true;
 
   if (state.config.modules.hiddenOkr && !state.okrRevealed) {
     const results = settleHiddenOkrs(state);
@@ -244,10 +262,14 @@ export function finalizeGameIfComplete(state: GameState): string[] {
       );
     }
     if (state.winnerId) {
-      events.push(`MVP：${getDisplayName(state, state.winnerId)}`);
+      const label = state.config.modules.continuousSprint ? "系列 MVP" : "MVP";
+      events.push(`${label}：${getDisplayName(state, state.winnerId)}`);
     }
   } else if (!state.winnerId) {
     state.winnerId = determineWinnerId(state);
+    if (state.winnerId && state.config.modules.continuousSprint) {
+      events.push(`系列 MVP：${getDisplayName(state, state.winnerId)}`);
+    }
   }
   return events;
 }

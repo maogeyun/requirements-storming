@@ -280,7 +280,9 @@ export type GameAction =
   | { type: "END_EXECUTE" }
   | { type: "FINISH_END_PHASE" }
   | { type: "END_TURN" }
-  | { type: "END_ROUND" };
+  | { type: "END_ROUND" }
+  /** 基础加班 +8：-1 绩效 +1 技术债（破坏 O-06） */
+  | { type: "USE_BASE_OVERTIME"; playerId: string };
 
 /** UI / 校验用：当前可执行动作及禁用原因 */
 export interface LegalAction {

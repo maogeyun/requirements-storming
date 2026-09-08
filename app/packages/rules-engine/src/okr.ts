@@ -17,11 +17,13 @@ export function noteCollabCardPlayed(player: PlayerState, cardId: string): void 
   player.seasonPlayedCollab.push(cardId);
 }
 
-/** 清 Bug：累计计入 O-02 */
-export function noteBugsCleared(player: PlayerState, count: number): void {
-  if (count <= 0) return;
-  player.personalBugs = Math.max(0, player.personalBugs - count);
-  player.bugsClearedTotal += count;
+/** 清 Bug：仅累计实际清除数（计入 O-02） */
+export function noteBugsCleared(player: PlayerState, count: number): number {
+  if (count <= 0) return 0;
+  const actual = Math.min(count, player.personalBugs);
+  player.personalBugs -= actual;
+  player.bugsClearedTotal += actual;
+  return actual;
 }
 
 /** 加班 / 通宵（含 B-04）：破坏 O-06 */

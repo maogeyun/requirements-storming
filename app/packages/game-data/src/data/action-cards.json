@@ -1,10 +1,10 @@
 [
   { "id": "S-01", "name": "写代码", "category": "skill", "rarity": "N", "workHours": 16, "effectText": "需求 +6", "copies": 4, "progressGain": 6 },
   { "id": "S-02", "name": "画原型", "category": "skill", "rarity": "N", "workHours": 8, "effectText": "需求 +3，本 Turn 下一张技能卡 -4 工时", "copies": 3, "progressGain": 3 },
-  { "id": "S-03", "name": "做测试", "category": "skill", "rarity": "N", "workHours": 8, "effectText": "需求 +2，清除 1 个 Bug", "copies": 3, "progressGain": 2 },
+  { "id": "S-03", "name": "做测试", "category": "skill", "rarity": "N", "workHours": 8, "effectText": "需求 +2，清除 1 个 Bug", "copies": 3, "progressGain": 2, "bugsCleared": 1 },
   { "id": "S-04", "name": "需求拆解", "category": "skill", "rarity": "N", "workHours": 4, "effectText": "需求 +2，抽 1 张牌", "copies": 2, "progressGain": 2 },
-  { "id": "S-05", "name": "灰度发布", "category": "skill", "rarity": "N", "workHours": 8, "effectText": "需求 +4，生成 1 个 Bug", "copies": 2, "progressGain": 4 },
-  { "id": "S-06", "name": "性能优化", "category": "skill", "rarity": "R", "workHours": 12, "effectText": "需求 +4，清除 2 个 Bug", "copies": 2, "progressGain": 4 },
+  { "id": "S-05", "name": "灰度发布", "category": "skill", "rarity": "N", "workHours": 8, "effectText": "需求 +4，生成 1 个 Bug", "copies": 2, "progressGain": 4, "bugsGenerated": 1 },
+  { "id": "S-06", "name": "性能优化", "category": "skill", "rarity": "R", "workHours": 12, "effectText": "需求 +4，清除 2 个 Bug", "copies": 2, "progressGain": 4, "bugsCleared": 2 },
   { "id": "S-07", "name": "攻坚重构", "category": "skill", "rarity": "R", "workHours": 24, "effectText": "需求 +10（单卡最高产出）", "copies": 2, "progressGain": 10 },
   { "id": "S-08", "name": "紧急修复", "category": "skill", "rarity": "N", "workHours": 8, "effectText": "需求 +2，移除自己身上 1 个负面状态", "copies": 2, "progressGain": 2 },
   { "id": "B-01", "name": "心流状态", "category": "boost", "rarity": "R", "workHours": 0, "effectText": "本 Turn 所有技能卡工时 -25%（向上取整）", "copies": 2 },

@@ -22,6 +22,10 @@ export type ActionCardWithMeta = ActionCardDefinition & {
   progressGain?: number;
   collabProgress?: number;
   selfPerformance?: number;
+  /** 清除个人 Bug 数量（S-03 / S-06） */
+  bugsCleared?: number;
+  /** 生成个人 Bug 数量（S-05） */
+  bugsGenerated?: number;
 };
 
 const rawConstants = constantsJson as RawConstants;

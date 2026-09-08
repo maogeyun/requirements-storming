@@ -30,7 +30,12 @@ export function consumeInteractionCard(state: GameState, playerId: string, cardI
   }
 
   player.workHoursRemaining -= card.workHours;
-  player.hand = player.hand.filter((id) => id !== cardId);
+  player.hand = player.hand.filter((id, index, all) => {
+    // 同名多份只移一张
+    if (id !== cardId) return true;
+    const first = all.indexOf(cardId);
+    return index !== first;
+  });
   state.actionDiscard.push(cardId);
   player.seasonPlayedCollab.push(cardId);
   // O-05：互动卡 C-12～C-14 不计入 collabCardsPlayed

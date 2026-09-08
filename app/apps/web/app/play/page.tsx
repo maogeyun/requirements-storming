@@ -88,7 +88,7 @@ function darkBidZoneCopy(state: GameState): {
 } {
   const pending = state.pendingDarkBid;
   if (!pending || pending.resolved) {
-    return { status: "collapsed", label: "暗标区 · 已收束" };
+    return { status: "collapsed", label: "已收束" };
   }
   const bidCount = Object.keys(pending.bids).length;
   if (pending.isCatchUp && bidCount === 0) {

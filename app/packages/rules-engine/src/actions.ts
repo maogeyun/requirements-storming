@@ -1,4 +1,4 @@
-import { getActionCard, isInteractionCardId } from "@rs/game-data";
+import { getActionCard, isInteractionCardId, isTeamFoundationCollabId } from "@rs/game-data";
 import type { GameAction, GameState, LegalAction, MilestoneId } from "@rs/shared";
 import { getDisplayName, getPlayer } from "./create-game";
 import { assertEventFlipped, flipEventCard, forceFlipSpecificEvent } from "./events";
@@ -21,6 +21,7 @@ import {
   submitDarkBid,
   type MilestoneSettlement,
 } from "./milestone";
+import { noteBugsCleared, noteCollabCardPlayed, noteOvertimeUsed, settleHiddenOkrs } from "./okr";
 import {
   assertNoPendingDarkBid,
   assertNoPendingInteraction,
@@ -30,6 +31,14 @@ import {
   runDrawPhase,
   runPlanPhase,
 } from "./turn";
+import { createRng, drawOne } from "./rng";
+
+/** 从手牌移除一张指定 id（同名多份只移一张） */
+function removeOneFromHand(hand: string[], cardId: string): string[] {
+  const index = hand.indexOf(cardId);
+  if (index < 0) return hand;
+  return [...hand.slice(0, index), ...hand.slice(index + 1)];
+}
 
 export interface ApplyActionResult {
   ok: true;
@@ -121,6 +130,15 @@ export function attemptProgressGain(
       );
     }
   }
+  if (state.okrRevealed && state.okrSettlements) {
+    events.push("总结算：隐藏 OKR 亮牌");
+    for (const row of state.okrSettlements) {
+      events.push(
+        `${row.displayName} ${row.okrId} ${row.name}：${row.achieved ? "达成" : "未达成"}` +
+          (row.achieved ? ` +${row.reward}` : ""),
+      );
+    }
+  }
 
   if (trigger && !willCross) {
     openDarkBid(state, trigger);
@@ -170,11 +188,279 @@ export function playSkillCard(
   }
 
   player.workHoursRemaining -= card.workHours;
-  player.hand = player.hand.filter((id) => id !== cardId);
+  player.hand = removeOneFromHand(player.hand, cardId);
   state.actionDiscard.push(cardId);
 
+  const sideEvents: string[] = [];
+  const cleared = noteBugsCleared(player, card.bugsCleared ?? 0);
+  if (cleared > 0) {
+    sideEvents.push(`${getDisplayName(state, playerId)} 清除 ${cleared} 个 Bug（累计 ${player.bugsClearedTotal}）`);
+  }
+  if ((card.bugsGenerated ?? 0) > 0) {
+    player.personalBugs += card.bugsGenerated!;
+    sideEvents.push(`${getDisplayName(state, playerId)} 生成 ${card.bugsGenerated} 个 Bug`);
+  }
+
   const progressGain = card.progressGain ?? 0;
-  return attemptProgressGain(state, playerId, progressGain, cardId);
+  const result = attemptProgressGain(state, playerId, progressGain, cardId);
+  return success({
+    ...result,
+    events: [...sideEvents, ...result.events],
+  });
+}
+
+/**
+ * 协作卡 C-01～C-07（非互动）。打出时调用 noteCollabCardPlayed（O-05）。
+ * 互动卡 C-12～C-14 不得走此路径。
+ */
+export function playCollabCard(
+  state: GameState,
+  playerId: string,
+  cardId: string,
+  targets?: string[],
+): ApplyActionResult {
+  if (hasBlockingDarkBid(state)) {
+    throw new Error("必须补开，不能跳过：请先完成暗标");
+  }
+  if (hasBlockingInteraction(state)) {
+    throw new Error("必须先完成互动响应窗");
+  }
+  assertEventFlipped(state);
+  if (state.turnPhase !== "execute") {
+    throw new Error("Can only play cards in execute phase");
+  }
+  if (getCurrentPlayerId(state) !== playerId) {
+    throw new Error("Not your turn");
+  }
+  if (isInteractionCardId(cardId)) {
+    throw new Error("互动卡不可经协作路径打出");
+  }
+
+  const card = getActionCard(cardId);
+  if (!card || card.category !== "collab") {
+    throw new Error(`Not a collab card: ${cardId}`);
+  }
+  if (!isTeamFoundationCollabId(cardId)) {
+    throw new Error(`Unsupported collab card: ${cardId}`);
+  }
+
+  const player = getPlayer(state, playerId);
+  if (!player.hand.includes(cardId)) {
+    throw new Error(`Card not in hand: ${cardId}`);
+  }
+  if (player.workHoursRemaining < card.workHours) {
+    throw new Error("Insufficient work hours");
+  }
+  if (card.seasonLimit && player.seasonPlayedCollab.includes(cardId)) {
+    throw new Error("本考核季该协作卡已打过");
+  }
+  if (card.gameLimit && player.gameLimitUsed[cardId]) {
+    throw new Error("本局限 1 次卡已用过");
+  }
+
+  player.workHoursRemaining -= card.workHours;
+  player.hand = removeOneFromHand(player.hand, cardId);
+  state.actionDiscard.push(cardId);
+  if (card.gameLimit) {
+    player.gameLimitUsed[cardId] = true;
+  }
+
+  // O-05：仅 C-01～C-07 计入
+  noteCollabCardPlayed(player, cardId);
+
+  const events: string[] = [
+    `${getDisplayName(state, playerId)} 打出协作卡 ${cardId} ${card.name}`,
+  ];
+
+  if (card.selfPerformance) {
+    player.performance += card.selfPerformance;
+    events.push(`${getDisplayName(state, playerId)} +${card.selfPerformance} 绩效`);
+  }
+
+  switch (cardId) {
+    case "C-03": {
+      for (const p of state.players) {
+        p.nextTurnBonusHours += 4;
+      }
+      events.push("全员下个 Turn +4 工时");
+      break;
+    }
+    case "C-02": {
+      const rng = createRng(state.rngSeed + state.round * 17 + state.currentPlayerIndex);
+      for (let i = 0; i < 2 && state.actionDeck.length > 0; i += 1) {
+        const pick = drawOne(state.actionDeck, rng);
+        state.actionDeck = pick.rest;
+        player.hand.push(pick.item);
+      }
+      events.push("抽 2 张（演示路径：暂留在手牌）");
+      break;
+    }
+    case "C-04": {
+      const targetId = targets?.[0];
+      if (!targetId) {
+        throw new Error("C-04 需要指定目标玩家");
+      }
+      const target = getPlayer(state, targetId);
+      const rng = createRng(state.rngSeed + state.round * 19 + state.currentPlayerIndex);
+      if (state.actionDeck.length > 0) {
+        const pick = drawOne(state.actionDeck, rng);
+        state.actionDeck = pick.rest;
+        target.hand.push(pick.item);
+      }
+      player.performance += 1;
+      events.push(`${getDisplayName(state, targetId)} 抽 1 张；${getDisplayName(state, playerId)} +1 绩效`);
+      break;
+    }
+    case "C-05": {
+      events.push("查看牌堆顶（演示：效果占位，已计入协作）");
+      break;
+    }
+    case "C-06": {
+      player.performance += 1;
+      events.push(`${getDisplayName(state, playerId)} +1 绩效（邀功）`);
+      break;
+    }
+    case "C-07": {
+      const targetId = targets?.[0];
+      if (!targetId) {
+        throw new Error("C-07 需要指定目标玩家");
+      }
+      const target = getPlayer(state, targetId);
+      target.workHoursRemaining += Math.floor(player.workHoursRemaining / 2);
+      events.push(`支援 ${getDisplayName(state, targetId)}：合并部分工时`);
+      break;
+    }
+    default:
+      break;
+  }
+
+  const collabProgress = card.collabProgress ?? 0;
+  if (collabProgress > 0) {
+    const totalGain = collabProgress * state.players.length;
+    for (const p of state.players) {
+      state.roundContributors.add(p.id);
+      p.contributedThisRound = true;
+    }
+    const progressResult = attemptProgressGain(state, playerId, totalGain, cardId);
+    return success({
+      ...progressResult,
+      events: [...events, ...progressResult.events],
+    });
+  }
+
+  return success({ events });
+}
+
+/**
+ * 加成卡。B-04 通宵必须调用 noteOvertimeUsed（破坏 O-06）。
+ */
+export function playBoostCard(
+  state: GameState,
+  playerId: string,
+  cardId: string,
+): ApplyActionResult {
+  if (hasBlockingDarkBid(state)) {
+    throw new Error("必须补开，不能跳过：请先完成暗标");
+  }
+  if (hasBlockingInteraction(state)) {
+    throw new Error("必须先完成互动响应窗");
+  }
+  assertEventFlipped(state);
+  if (state.turnPhase !== "execute") {
+    throw new Error("Can only play cards in execute phase");
+  }
+  if (getCurrentPlayerId(state) !== playerId) {
+    throw new Error("Not your turn");
+  }
+
+  const card = getActionCard(cardId);
+  if (!card || card.category !== "boost") {
+    throw new Error(`Not a boost card: ${cardId}`);
+  }
+
+  const player = getPlayer(state, playerId);
+  if (!player.hand.includes(cardId)) {
+    throw new Error(`Card not in hand: ${cardId}`);
+  }
+  if (player.workHoursRemaining < card.workHours) {
+    throw new Error("Insufficient work hours");
+  }
+  if (card.gameLimit && player.gameLimitUsed[cardId]) {
+    throw new Error("本局限 1 次卡已用过");
+  }
+
+  player.workHoursRemaining -= card.workHours;
+  player.hand = removeOneFromHand(player.hand, cardId);
+  state.actionDiscard.push(cardId);
+  if (card.gameLimit) {
+    player.gameLimitUsed[cardId] = true;
+  }
+
+  const events: string[] = [
+    `${getDisplayName(state, playerId)} 打出加成卡 ${cardId} ${card.name}`,
+  ];
+
+  switch (cardId) {
+    case "B-02": {
+      player.workHoursRemaining += 8;
+      player.workHoursBudget += 8;
+      events.push("+8 工时（咖啡，不计加班）");
+      break;
+    }
+    case "B-04": {
+      // 通宵：加班透支 +16，结算 -2 绩效 +2 技术债
+      noteOvertimeUsed(player);
+      player.workHoursRemaining += 16;
+      player.workHoursBudget += 16;
+      player.performance = Math.max(0, player.performance - 2);
+      player.personalDebt += 2;
+      events.push("通宵赶工：+16 工时，-2 绩效，+2 技术债（已标记加班）");
+      break;
+    }
+    case "B-01":
+    case "B-03":
+    case "B-05":
+      events.push("加成效果占位（已打出）");
+      break;
+    default:
+      break;
+  }
+
+  return success({ events });
+}
+
+/** 基础加班 +8：-1 绩效 +1 技术债；破坏 O-06 */
+export function useBaseOvertime(state: GameState, playerId: string): ApplyActionResult {
+  if (hasBlockingDarkBid(state)) {
+    throw new Error("必须补开，不能跳过：请先完成暗标");
+  }
+  if (hasBlockingInteraction(state)) {
+    throw new Error("必须先完成互动响应窗");
+  }
+  assertEventFlipped(state);
+  if (state.turnPhase !== "execute") {
+    throw new Error("只能在执行阶段加班");
+  }
+  if (getCurrentPlayerId(state) !== playerId) {
+    throw new Error("Not your turn");
+  }
+
+  const player = getPlayer(state, playerId);
+  if (player.usedOvertime) {
+    throw new Error("本 Turn 已动用加班额度");
+  }
+
+  noteOvertimeUsed(player);
+  player.workHoursRemaining += 8;
+  player.workHoursBudget += 8;
+  player.performance = Math.max(0, player.performance - 1);
+  player.personalDebt += 1;
+
+  return success({
+    events: [
+      `${getDisplayName(state, playerId)} 基础加班 +8：-1 绩效，+1 技术债`,
+    ],
+  });
 }
 
 /**
@@ -287,8 +573,23 @@ export function applyAction(state: GameState, action: GameAction): ApplyResult {
           return fail("未知互动卡");
         }
 
-        const played = playSkillCard(state, action.playerId, action.cardId);
-        return played;
+        const def = getActionCard(action.cardId);
+        if (!def) {
+          return fail(`未知卡牌: ${action.cardId}`);
+        }
+        if (def.category === "skill") {
+          return playSkillCard(state, action.playerId, action.cardId);
+        }
+        if (def.category === "collab") {
+          return playCollabCard(state, action.playerId, action.cardId, action.targets);
+        }
+        if (def.category === "boost") {
+          return playBoostCard(state, action.playerId, action.cardId);
+        }
+        return fail(`不支持的卡牌类型: ${def.category}`);
+      }
+      case "USE_BASE_OVERTIME": {
+        return useBaseOvertime(state, action.playerId);
       }
       case "SUBMIT_DARK_BID": {
         if (!state.pendingDarkBid || state.pendingDarkBid.resolved) {
@@ -580,6 +881,60 @@ export function listLegalActions(state: GameState, actorId: string): LegalAction
         continue;
       }
 
+      if (card.category === "boost") {
+        const canPay = player.workHoursRemaining >= card.workHours;
+        const gameUsed = Boolean(card.gameLimit && player.gameLimitUsed[cardId]);
+        actions.push({
+          action: { type: "PLAY_CARD", playerId: actorId, cardId },
+          label: `打出 ${card.name}（${card.effectText}）`,
+          enabled: canPay && !gameUsed,
+          reason: gameUsed ? "本局限 1 次已用" : !canPay ? "工时不足" : undefined,
+        });
+        continue;
+      }
+
+      if (card.category === "collab" && !card.isInteraction && isTeamFoundationCollabId(cardId)) {
+        const canPay = player.workHoursRemaining >= card.workHours;
+        const seasonUsed = Boolean(card.seasonLimit && player.seasonPlayedCollab.includes(cardId));
+        const gameUsed = Boolean(card.gameLimit && player.gameLimitUsed[cardId]);
+        const needsTarget = cardId === "C-04" || cardId === "C-07";
+        if (needsTarget) {
+          for (const target of state.playerOrder.filter((id) => id !== actorId)) {
+            actions.push({
+              action: {
+                type: "PLAY_CARD",
+                playerId: actorId,
+                cardId,
+                targets: [target],
+              },
+              label: `打出 ${card.name} → ${getDisplayName(state, target)}`,
+              enabled: canPay && !seasonUsed && !gameUsed,
+              reason: seasonUsed
+                ? "本考核季已打过"
+                : gameUsed
+                  ? "本局限 1 次已用"
+                  : !canPay
+                    ? "工时不足"
+                    : undefined,
+            });
+          }
+        } else {
+          actions.push({
+            action: { type: "PLAY_CARD", playerId: actorId, cardId },
+            label: `打出 ${card.name}（${card.effectText}）`,
+            enabled: canPay && !seasonUsed && !gameUsed,
+            reason: seasonUsed
+              ? "本考核季已打过"
+              : gameUsed
+                ? "本局限 1 次已用"
+                : !canPay
+                  ? "工时不足"
+                  : undefined,
+          });
+        }
+        continue;
+      }
+
       if (
         state.config.modules.interactionCards &&
         card.isInteraction &&
@@ -676,6 +1031,12 @@ export function listLegalActions(state: GameState, actorId: string): LegalAction
         });
       }
     }
+    actions.push({
+      action: { type: "USE_BASE_OVERTIME", playerId: actorId },
+      label: "基础加班 +8（-1 绩效 / +1 债）",
+      enabled: !player.usedOvertime,
+      reason: player.usedOvertime ? "本 Turn 已加班" : undefined,
+    });
     actions.push({
       action: { type: "END_EXECUTE" },
       label: "结束执行",
@@ -786,6 +1147,93 @@ export function setupC14CounterDemo(state: GameState): string[] {
   p2.hand = ["C-14", ...p2.hand.filter((id) => id !== "C-14")];
   p2.seasonPlayedCollab = [];
   return playC12(state, "p1", "p2", "debt");
+}
+
+/**
+ * 演示：同次多跨线（M1+M2）→ 暗标后先开 M1 的 C-13，M2 入队。
+ * 对应 interaction 测试中的多跨场景。
+ */
+export function setupMultiCrossDemo(state: GameState): ApplyActionResult {
+  setupCatchUpScenario(state, 22);
+  state.config.modules.interactionCards = true;
+  state.config.modules.darkBid = true;
+  state.activeEventFlags.doubleFirstMilestoneThisRound = false;
+
+  const result = attemptProgressGain(state, "p1", 80, null);
+  if (result.needsDarkBid && state.pendingDarkBid) {
+    for (const id of state.playerOrder) {
+      submitDarkBid(state, id, id === "p1" ? 5 : 0);
+    }
+    completeDarkBidAndSettle(state);
+  }
+
+  const queued = state.pendingPerformanceSettlementQueue.length;
+  return success({
+    events: [
+      "演示：同次多跨线 M1+M2",
+      `进度 ${state.progress}；当前 C-13 窗：${
+        state.pendingInteraction?.type === "C13_WINDOW"
+          ? state.pendingInteraction.milestoneId
+          : "—"
+      }`,
+      queued > 0 ? `另有 ${queued} 条跨线排队（将按序开 C-13）` : "无排队",
+      "绩效尚未结算，不与暗标双重结算",
+    ],
+    settlements: [],
+    needsDarkBid: false,
+  });
+}
+
+/**
+ * 演示：总结算亮 OKR。
+ * 为各座位写入可区分的统计，强制终局并亮牌。
+ */
+export function setupOkrRevealDemo(state: GameState): string[] {
+  state.config.modules.hiddenOkr = true;
+  state.gameOver = true;
+  state.okrRevealed = false;
+  state.okrSettlements = null;
+
+  // 确保人人有隐藏 OKR（若开局未开模块则补发）
+  const used = new Set(state.players.map((p) => p.okrId).filter(Boolean));
+  const pool = ["O-01", "O-02", "O-03", "O-04", "O-05", "O-06"].filter((id) => !used.has(id));
+  for (const player of state.players) {
+    if (!player.okrId) {
+      player.okrId = pool.shift() ?? "O-01";
+    }
+  }
+
+  // 写入可演示的差异化统计（不影响暗牌窥视规则）
+  for (const [index, player] of state.players.entries()) {
+    player.milestoneBreakCount = index === 0 ? 2 : 0;
+    player.bugsClearedTotal = index === 1 ? 5 : 1;
+    player.bottomMarks = index === 2 ? 1 : 0;
+    player.performance = index === 2 ? 12 : 4 - index;
+    player.personalDebt = index === 3 ? 0 : index === 0 ? 1 : 0;
+    player.breakthroughParticipations = index === 3 ? 2 : index === 0 ? 3 : 1;
+    player.collabCardsPlayed = index === 0 ? 4 : 1;
+    player.neverUsedOvertime = index !== 1;
+  }
+
+  // 若人数够，尽量让座位对齐 O-01～O-0n 便于肉眼核对
+  const preferred = ["O-01", "O-02", "O-03", "O-04", "O-05", "O-06"];
+  for (const [index, player] of state.players.entries()) {
+    if (preferred[index]) player.okrId = preferred[index]!;
+  }
+
+  const results = settleHiddenOkrs(state);
+  const lines = ["演示：总结算亮 OKR"];
+  for (const row of results) {
+    lines.push(
+      `${row.displayName} · ${row.okrId} ${row.name}：${row.achieved ? "达成" : "未达成"}` +
+        (row.achieved ? ` +${row.reward}` : "") +
+        `（${row.reason}）`,
+    );
+  }
+  if (state.winnerId) {
+    lines.push(`MVP：${getDisplayName(state, state.winnerId)}`);
+  }
+  return lines;
 }
 
 export { rejectPublicDebtDump };

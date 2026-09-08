@@ -1,6 +1,7 @@
 import type { DarkBidState, GameState, MilestoneDefinition, MilestoneId } from "@rs/shared";
 import { getPlayer, getSprintZoneDistanceForState } from "./create-game";
 import { openC13Window } from "./interaction";
+import { finalizeGameIfComplete } from "./okr";
 
 export function distanceToMilestone(progress: number, threshold: number): number {
   return threshold - progress;
@@ -307,7 +308,7 @@ export function applyProgressGain(
   }
 
   if (state.progress >= state.totalProgressTarget) {
-    state.gameOver = true;
+    finalizeGameIfComplete(state);
   }
 
   return settlements;

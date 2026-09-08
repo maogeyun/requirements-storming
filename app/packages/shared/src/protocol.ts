@@ -1,4 +1,4 @@
-import type { GameAction, GameConfig, GameModuleFlags, GameState, PlayerState } from "./types";
+import type { GameAction, GameConfig, GameModuleFlags, GameState, OkrEvaluation, PlayerState } from "./types";
 import type { ErrorPayload } from "./errors";
 
 export type RoomPhase = "lobby" | "playing" | "finished";
@@ -82,6 +82,10 @@ export interface PlayerView {
   } | null;
   gameOver: boolean;
   winnerId: string | null;
+  /** 总结算是否已亮出隐藏 OKR（全员可见） */
+  okrRevealed: boolean;
+  /** 亮牌结果；亮牌前为 null，他座不可窥牌 */
+  okrSettlements: OkrEvaluation[] | null;
 }
 
 export interface GameRoomState {

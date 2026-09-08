@@ -6,6 +6,7 @@ import {
   resetEventFlagsForNewRound,
   resolveEndPhaseEventEffects,
 } from "./events";
+import { markSeasonBottomPlayers } from "./okr";
 import { createRng, drawOne } from "./rng";
 
 export function getCurrentPlayerId(state: GameState): string {
@@ -142,6 +143,7 @@ export function finishEndPhase(state: GameState): void {
     state.roundContributors = new Set();
     resetEventFlagsForNewRound(state);
     if (state.round > gameConstants.roundsPerSeason) {
+      markSeasonBottomPlayers(state);
       state.round = 1;
       state.season += 1;
       for (const p of state.players) {

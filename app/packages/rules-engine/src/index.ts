@@ -11,6 +11,7 @@ export * from "./rng";
 export * from "./turn";
 export * from "./events";
 export * from "./interaction";
+export * from "./okr";
 export {
   applyAction,
   attemptProgressGain,
@@ -19,9 +20,14 @@ export {
   listLegalActions,
   playSkillCard,
   playSkillCardWithBids,
+  playCollabCard,
+  playBoostCard,
+  useBaseOvertime,
   setupCatchUpScenario,
   setupC12Demo,
   setupC13StealDemo,
   setupC14CounterDemo,
+  setupMultiCrossDemo,
+  setupOkrRevealDemo,
 } from "./actions";
 export type { ApplyActionResult, ApplyResult } from "./actions";

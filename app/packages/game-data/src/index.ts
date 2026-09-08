@@ -22,6 +22,10 @@ export type ActionCardWithMeta = ActionCardDefinition & {
   progressGain?: number;
   collabProgress?: number;
   selfPerformance?: number;
+  /** 清除个人 Bug 数量（S-03 / S-06） */
+  bugsCleared?: number;
+  /** 生成个人 Bug 数量（S-05） */
+  bugsGenerated?: number;
 };
 
 const rawConstants = constantsJson as RawConstants;
@@ -52,6 +56,7 @@ export const okrCards = okrCardsJson as OkrCardDefinition[];
 
 const actionCardMap = new Map(actionCards.map((c) => [c.id, c]));
 const eventCardMap = new Map(eventCards.map((c) => [c.id, c]));
+const okrCardMap = new Map(okrCards.map((c) => [c.id, c]));
 
 export function getActionCard(id: string): ActionCardWithMeta | undefined {
   return actionCardMap.get(id);
@@ -59,6 +64,27 @@ export function getActionCard(id: string): ActionCardWithMeta | undefined {
 
 export function getEventCard(id: string): EventCardDefinition | undefined {
   return eventCardMap.get(id);
+}
+
+export function getOkrCard(id: string): OkrCardDefinition | undefined {
+  return okrCardMap.get(id);
+}
+
+/** O-05 团队基石：仅计 C-01～C-07，不含互动卡 C-12～C-14 */
+export const TEAM_FOUNDATION_COLLAB_IDS = [
+  "C-01",
+  "C-02",
+  "C-03",
+  "C-04",
+  "C-05",
+  "C-06",
+  "C-07",
+] as const;
+
+export type TeamFoundationCollabId = (typeof TEAM_FOUNDATION_COLLAB_IDS)[number];
+
+export function isTeamFoundationCollabId(id: string): id is TeamFoundationCollabId {
+  return (TEAM_FOUNDATION_COLLAB_IDS as readonly string[]).includes(id);
 }
 
 export const INTERACTION_CARD_IDS = ["C-12", "C-13", "C-14"] as const;

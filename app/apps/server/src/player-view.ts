@@ -40,7 +40,8 @@ function toPublicSummary(player: PlayerState): PublicPlayerSummary {
 }
 
 function shouldRevealOkr(gameState: GameState): boolean {
-  return gameState.gameOver;
+  // 仅总结算亮牌后全员可见；gameOver 但互动窗未关时仍保持暗牌
+  return gameState.okrRevealed;
 }
 
 export function getPlayerView(
@@ -65,6 +66,7 @@ export function getPlayerView(
     const otherView: OtherPlayerView = {
       ...toPublicSummary(player),
       isSelf: false,
+      // 亮牌前他座不可窥 OKR
       okrId: revealOkr ? player.okrId : null,
     };
     return otherView;
@@ -95,5 +97,7 @@ export function getPlayerView(
       : null,
     gameOver: gameState.gameOver,
     winnerId: gameState.winnerId,
+    okrRevealed: gameState.okrRevealed,
+    okrSettlements: revealOkr ? gameState.okrSettlements : null,
   };
 }

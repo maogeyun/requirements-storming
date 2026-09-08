@@ -21,6 +21,7 @@ import {
   submitDarkBid,
   type MilestoneSettlement,
 } from "./milestone";
+import { settleHiddenOkrs } from "./okr";
 import {
   assertNoPendingDarkBid,
   assertNoPendingInteraction,
@@ -118,6 +119,15 @@ export function attemptProgressGain(
     if (state.pendingPerformanceSettlementQueue.length > 0) {
       events.push(
         `另有 ${state.pendingPerformanceSettlementQueue.length} 条跨线排队：将按序开 C-13 窗`,
+      );
+    }
+  }
+  if (state.okrRevealed && state.okrSettlements) {
+    events.push("总结算：隐藏 OKR 亮牌");
+    for (const row of state.okrSettlements) {
+      events.push(
+        `${row.displayName} ${row.okrId} ${row.name}：${row.achieved ? "达成" : "未达成"}` +
+          (row.achieved ? ` +${row.reward}` : ""),
       );
     }
   }
@@ -786,6 +796,93 @@ export function setupC14CounterDemo(state: GameState): string[] {
   p2.hand = ["C-14", ...p2.hand.filter((id) => id !== "C-14")];
   p2.seasonPlayedCollab = [];
   return playC12(state, "p1", "p2", "debt");
+}
+
+/**
+ * 演示：同次多跨线（M1+M2）→ 暗标后先开 M1 的 C-13，M2 入队。
+ * 对应 interaction 测试中的多跨场景。
+ */
+export function setupMultiCrossDemo(state: GameState): ApplyActionResult {
+  setupCatchUpScenario(state, 22);
+  state.config.modules.interactionCards = true;
+  state.config.modules.darkBid = true;
+  state.activeEventFlags.doubleFirstMilestoneThisRound = false;
+
+  const result = attemptProgressGain(state, "p1", 80, null);
+  if (result.needsDarkBid && state.pendingDarkBid) {
+    for (const id of state.playerOrder) {
+      submitDarkBid(state, id, id === "p1" ? 5 : 0);
+    }
+    completeDarkBidAndSettle(state);
+  }
+
+  const queued = state.pendingPerformanceSettlementQueue.length;
+  return success({
+    events: [
+      "演示：同次多跨线 M1+M2",
+      `进度 ${state.progress}；当前 C-13 窗：${
+        state.pendingInteraction?.type === "C13_WINDOW"
+          ? state.pendingInteraction.milestoneId
+          : "—"
+      }`,
+      queued > 0 ? `另有 ${queued} 条跨线排队（将按序开 C-13）` : "无排队",
+      "绩效尚未结算，不与暗标双重结算",
+    ],
+    settlements: [],
+    needsDarkBid: false,
+  });
+}
+
+/**
+ * 演示：总结算亮 OKR。
+ * 为各座位写入可区分的统计，强制终局并亮牌。
+ */
+export function setupOkrRevealDemo(state: GameState): string[] {
+  state.config.modules.hiddenOkr = true;
+  state.gameOver = true;
+  state.okrRevealed = false;
+  state.okrSettlements = null;
+
+  // 确保人人有隐藏 OKR（若开局未开模块则补发）
+  const used = new Set(state.players.map((p) => p.okrId).filter(Boolean));
+  const pool = ["O-01", "O-02", "O-03", "O-04", "O-05", "O-06"].filter((id) => !used.has(id));
+  for (const player of state.players) {
+    if (!player.okrId) {
+      player.okrId = pool.shift() ?? "O-01";
+    }
+  }
+
+  // 写入可演示的差异化统计（不影响暗牌窥视规则）
+  for (const [index, player] of state.players.entries()) {
+    player.milestoneBreakCount = index === 0 ? 2 : 0;
+    player.bugsClearedTotal = index === 1 ? 5 : 1;
+    player.bottomMarks = index === 2 ? 1 : 0;
+    player.performance = index === 2 ? 12 : 4 - index;
+    player.personalDebt = index === 3 ? 0 : index === 0 ? 1 : 0;
+    player.breakthroughParticipations = index === 3 ? 2 : index === 0 ? 3 : 1;
+    player.collabCardsPlayed = index === 0 ? 4 : 1;
+    player.neverUsedOvertime = index !== 1;
+  }
+
+  // 若人数够，尽量让座位对齐 O-01～O-0n 便于肉眼核对
+  const preferred = ["O-01", "O-02", "O-03", "O-04", "O-05", "O-06"];
+  for (const [index, player] of state.players.entries()) {
+    if (preferred[index]) player.okrId = preferred[index]!;
+  }
+
+  const results = settleHiddenOkrs(state);
+  const lines = ["演示：总结算亮 OKR"];
+  for (const row of results) {
+    lines.push(
+      `${row.displayName} · ${row.okrId} ${row.name}：${row.achieved ? "达成" : "未达成"}` +
+        (row.achieved ? ` +${row.reward}` : "") +
+        `（${row.reason}）`,
+    );
+  }
+  if (state.winnerId) {
+    lines.push(`MVP：${getDisplayName(state, state.winnerId)}`);
+  }
+  return lines;
 }
 
 export { rejectPublicDebtDump };

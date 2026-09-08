@@ -1,6 +1,7 @@
 import { getActionCard, isInteractionCardId } from "@rs/game-data";
 import type { GameState, MilestoneId, PendingPerformanceSettlement, PlayerState } from "@rs/shared";
 import { getDisplayName, getPlayer } from "./create-game";
+import { finalizeGameIfComplete } from "./okr";
 
 export function hasUsedInteractionThisSeason(player: PlayerState): boolean {
   return player.seasonPlayedCollab.some((id) => isInteractionCardId(id));
@@ -32,7 +33,7 @@ export function consumeInteractionCard(state: GameState, playerId: string, cardI
   player.hand = player.hand.filter((id) => id !== cardId);
   state.actionDiscard.push(cardId);
   player.seasonPlayedCollab.push(cardId);
-  player.collabCardsPlayed += 1;
+  // O-05：互动卡 C-12～C-14 不计入 collabCardsPlayed
 }
 
 export function rejectPublicDebtDump(): never {
@@ -347,6 +348,7 @@ export function finalizePerformanceSettlement(
 ): string[] {
   const messages = applyScaledSettlement(state, settlement);
   messages.push(...openNextQueuedC13Window(state));
+  messages.push(...finalizeGameIfComplete(state));
   return messages;
 }
 

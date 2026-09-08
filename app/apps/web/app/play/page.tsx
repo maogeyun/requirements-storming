@@ -1,6 +1,6 @@
 "use client";
 
-import { getActionCard, getEventCard } from "@rs/game-data";
+import { getActionCard, getEventCard, getOkrCard } from "@rs/game-data";
 import {
   applyAction,
   createGame,
@@ -11,8 +11,10 @@ import {
   setupC12Demo,
   setupC13StealDemo,
   setupC14CounterDemo,
+  setupMultiCrossDemo,
+  setupOkrRevealDemo,
 } from "@rs/rules-engine";
-import type { GameState, LegalAction, TurnPhase } from "@rs/shared";
+import type { GameState, LegalAction, OkrEvaluation, TurnPhase } from "@rs/shared";
 import { useMemo, useState } from "react";
 
 const PHASES: TurnPhase[] = ["draw", "plan", "execute", "end"];
@@ -30,6 +32,17 @@ type Screen = "setup" | "play";
 function seatLabel(state: GameState, playerId: string | null | undefined): string {
   if (!playerId) return "—";
   return state.players.find((p) => p.id === playerId)?.displayName ?? "—";
+}
+
+function eventBarCopy(state: GameState): string {
+  if (!state.eventFlippedThisRound || !state.currentEventId) {
+    return "本轮未翻 / 无事件";
+  }
+  const eventDef = getEventCard(state.currentEventId);
+  if (!eventDef) {
+    return "本轮未翻 / 无事件";
+  }
+  return `${state.currentEventId} ${eventDef.name} — ${eventDef.effectText}`;
 }
 
 function cloneState(state: GameState): GameState {
@@ -92,7 +105,71 @@ function cloneState(state: GameState): GameState {
       modules: { ...state.config.modules },
     },
     constants: state.constants,
+    okrSettlements: state.okrSettlements
+      ? state.okrSettlements.map((row) => ({ ...row }))
+      : null,
   };
+}
+
+function OkrPanel({
+  state,
+  activeSeat,
+}: {
+  state: GameState;
+  activeSeat: string;
+}) {
+  const revealed = state.okrRevealed;
+  const settlements = state.okrSettlements ?? [];
+  const settlementByPlayer = new Map(settlements.map((row) => [row.playerId, row]));
+
+  return (
+    <section className="okr-panel" aria-label="隐藏 OKR">
+      <h2>{revealed ? "OKR 亮牌（总结算）" : "隐藏 OKR"}</h2>
+      <div className="okr-row">
+        {state.players.map((p) => {
+          const isSelf = p.id === activeSeat;
+          const row: OkrEvaluation | undefined = settlementByPlayer.get(p.id);
+          const def = p.okrId ? getOkrCard(p.okrId) : undefined;
+
+          if (revealed) {
+            return (
+              <div key={p.id} className={`okr-card bright ${isSelf ? "self" : ""}`}>
+                <div className="okr-seat">{p.displayName}</div>
+                <div className="okr-title">
+                  {row ? `${row.okrId} ${row.name}` : p.okrId ?? "—"}
+                </div>
+                <div className="okr-cond">{row?.conditionText ?? def?.conditionText ?? ""}</div>
+                <div className={row?.achieved ? "okr-ok" : "okr-miss"}>
+                  {row?.achieved ? `达成 +${row.reward}` : "未达成"}
+                </div>
+              </div>
+            );
+          }
+
+          if (isSelf) {
+            return (
+              <div key={p.id} className="okr-card dark self">
+                <div className="okr-seat">你的隐藏 OKR</div>
+                <div className="okr-title">
+                  {def ? `${def.id} ${def.name}` : p.okrId ?? "未抽取"}
+                </div>
+                <div className="okr-cond">{def?.conditionText ?? "开局暗抽，总结算亮牌"}</div>
+                <div className="muted">仅本座位可见 · 结算前不可窥他座</div>
+              </div>
+            );
+          }
+
+          return (
+            <div key={p.id} className="okr-card dark locked">
+              <div className="okr-seat">{p.displayName}</div>
+              <div className="okr-title">已抽取 · 结算亮牌</div>
+              <div className="muted">暗牌 · 无偷看入口</div>
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
 }
 
 export default function PlayShellPage() {
@@ -124,7 +201,7 @@ export default function PlayShellPage() {
         modules: {
           darkBid: true,
           interactionCards: true,
-          hiddenOkr: false,
+          hiddenOkr: true,
           continuousSprint: false,
         },
       },
@@ -134,8 +211,9 @@ export default function PlayShellPage() {
     setActiveSeat(game.playerOrder[0]!);
     setScreen("play");
     setLog([
-      `对局开始 · 规则 ${RULES_VERSION} · ${playerCount} 人 · 事件+互动`,
+      `对局开始 · 规则 ${RULES_VERSION} · ${playerCount} 人 · 事件+互动+隐藏 OKR`,
       `座位：${game.players.map((p) => p.displayName).join("、")}`,
+      "每人已暗抽 1 张 OKR（仅本座位可见）",
     ]);
     setError(null);
   }
@@ -221,13 +299,28 @@ export default function PlayShellPage() {
     ]);
   }
 
+  function runMultiCrossDemo() {
+    if (!state) return;
+    const draft = cloneState(state);
+    const result = setupMultiCrossDemo(draft);
+    setActiveSeat("p1");
+    commit(draft, result.events);
+  }
+
+  function runOkrRevealDemo() {
+    if (!state) return;
+    const draft = cloneState(state);
+    const events = setupOkrRevealDemo(draft);
+    commit(draft, events);
+  }
+
   if (screen === "setup") {
     return (
       <main className="shell">
         <header className="hero">
           <p className="eyebrow">Requirement Storm</p>
           <h1>需求风暴</h1>
-          <p className="lede">事件 + 互动 · 本地多座位 · 规则 {RULES_VERSION}</p>
+          <p className="lede">事件 + 互动 + 隐藏 OKR · 本地多座位 · 规则 {RULES_VERSION}</p>
         </header>
 
         <section className="setup">
@@ -247,9 +340,9 @@ export default function PlayShellPage() {
           </label>
           <div className="rules-box">
             <div>规则版本：<strong>{RULES_VERSION}</strong></div>
-            <div>模块：暗标 · 事件牌 · 互动卡 C-12～C-14</div>
+            <div>模块：暗标 · 事件牌 · 互动卡 C-12～C-14 · 隐藏 OKR</div>
             <div>模式：本机多座位（非联机大厅）</div>
-            <div className="muted">座位展示名示例：座位 1 / 产品</div>
+            <div className="muted">座位展示名示例：座位 1 / 产品 · OKR 仅本座位可见</div>
           </div>
           <button type="button" className="primary" onClick={startGame}>
             开始
@@ -265,7 +358,6 @@ export default function PlayShellPage() {
   const interaction = state.pendingInteraction;
   const activePlayer = state.players.find((p) => p.id === activeSeat)!;
   const currentPlayer = state.players.find((p) => p.id === currentPlayerId);
-  const eventDef = state.currentEventId ? getEventCard(state.currentEventId) : null;
   const queuedCrossCount = state.pendingPerformanceSettlementQueue.length;
 
   return (
@@ -278,6 +370,7 @@ export default function PlayShellPage() {
         <div className="muted">
           R{state.round} · S{state.season} · 进度 {state.progress}/{state.totalProgressTarget}
           {state.publicDebt > 0 ? ` · 公共债 ${state.publicDebt}` : ""}
+          {state.gameOver ? " · 终局" : ""}
         </div>
         <button type="button" className="ghost" onClick={() => setScreen("setup")}>
           回开局
@@ -300,12 +393,7 @@ export default function PlayShellPage() {
           当前该谁：<strong>{currentPlayer?.displayName ?? "—"}</strong>
           {activeSeat === currentPlayerId ? "（正是你操作的座位）" : ""}
         </p>
-        <p className="muted">
-          事件：
-          {!state.eventFlippedThisRound
-            ? "尚未翻开（必须先翻 1 张，才能抽卡/互动）"
-            : `${state.currentEventId} ${eventDef?.name ?? ""} — ${eventDef?.effectText ?? ""}`}
-        </p>
+        <p className="muted">事件：{eventBarCopy(state)}</p>
         <p className="muted">
           你能做什么：
           {interaction?.type === "C14"
@@ -323,6 +411,8 @@ export default function PlayShellPage() {
                   : `${PHASE_LABEL[state.turnPhase]}阶段可用动作见下方`}
         </p>
       </section>
+
+      <OkrPanel state={state} activeSeat={activeSeat} />
 
       {!state.eventFlippedThisRound && (
         <section className="interrupt event-gate" role="alertdialog" aria-label="翻事件">
@@ -461,6 +551,12 @@ export default function PlayShellPage() {
           </button>
           <button type="button" className="demo" onClick={runCatchUpDemo}>
             演示：跨线补开
+          </button>
+          <button type="button" className="demo" onClick={runMultiCrossDemo}>
+            演示：同次多跨线
+          </button>
+          <button type="button" className="demo" onClick={runOkrRevealDemo}>
+            演示：总结算亮 OKR
           </button>
         </div>
       </section>

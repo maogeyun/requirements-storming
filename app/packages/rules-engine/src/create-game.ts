@@ -110,6 +110,8 @@ export function createGame(options: CreateGameOptions): GameState {
     usedRequirementIds: [requirementPick.item],
     gameOver: false,
     winnerId: null,
+    okrRevealed: false,
+    okrSettlements: null,
     rngSeed: seed,
   };
 

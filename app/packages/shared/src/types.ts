@@ -108,9 +108,26 @@ export interface PlayerState {
   gameLimitUsed: Record<string, boolean>;
   milestoneBreakCount: number;
   bugsClearedTotal: number;
+  /**
+   * 团队基石（O-05）计数：仅 C-01～C-07。
+   * 互动卡 C-12～C-14 不得计入。
+   */
   collabCardsPlayed: number;
   breakthroughParticipations: number;
   neverUsedOvertime: boolean;
+}
+
+/** 单张隐藏 OKR 的判定结果（总结算亮牌） */
+export interface OkrEvaluation {
+  playerId: string;
+  displayName: string;
+  okrId: string;
+  name: string;
+  conditionText: string;
+  achieved: boolean;
+  /** 达成时写入绩效的奖励；未达成则为 0 */
+  reward: number;
+  reason: string;
 }
 
 export interface GameConfig {
@@ -234,6 +251,10 @@ export interface GameState {
   usedRequirementIds: string[];
   gameOver: boolean;
   winnerId: string | null;
+  /** 总结算是否已亮出隐藏 OKR */
+  okrRevealed: boolean;
+  /** 亮牌后的判定结果；亮牌前为 null */
+  okrSettlements: OkrEvaluation[] | null;
   rngSeed: number;
 }
 

@@ -38,7 +38,8 @@ body {
 .interrupt h2,
 .seats h2,
 .actions h2,
-.log h2 {
+.log h2,
+.okr-panel h2 {
   font-family: "ZCOOL XiaoWei", serif;
   font-weight: 400;
   letter-spacing: 0.02em;
@@ -187,8 +188,70 @@ button.demo {
 .interrupt,
 .seats,
 .actions,
-.log {
+.log,
+.okr-panel {
   margin-top: 1.25rem;
+}
+
+.okr-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 0.65rem;
+}
+
+.okr-card {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 0.75rem 0.85rem;
+  background: rgba(10, 16, 14, 0.72);
+  min-height: 7.5rem;
+}
+
+.okr-card.self {
+  border-color: var(--accent);
+}
+
+.okr-card.locked {
+  opacity: 0.85;
+  background:
+    repeating-linear-gradient(
+      -45deg,
+      rgba(20, 32, 28, 0.9),
+      rgba(20, 32, 28, 0.9) 8px,
+      rgba(12, 18, 16, 0.95) 8px,
+      rgba(12, 18, 16, 0.95) 16px
+    );
+}
+
+.okr-card.bright {
+  border-color: var(--warn);
+  background: rgba(232, 184, 74, 0.08);
+}
+
+.okr-seat {
+  font-size: 0.78rem;
+  color: var(--muted);
+  margin-bottom: 0.35rem;
+}
+
+.okr-title {
+  font-weight: 600;
+  margin-bottom: 0.25rem;
+}
+
+.okr-cond {
+  font-size: 0.85rem;
+  color: var(--muted);
+  margin-bottom: 0.4rem;
+}
+
+.okr-ok {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.okr-miss {
+  color: var(--danger);
 }
 
 .interrupt {

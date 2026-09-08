@@ -1231,7 +1231,8 @@ export function setupOkrRevealDemo(state: GameState): string[] {
     );
   }
   if (state.winnerId) {
-    lines.push(`MVP：${getDisplayName(state, state.winnerId)}`);
+    const label = state.config.modules.continuousSprint ? "系列 MVP" : "MVP";
+    lines.push(`${label}：${getDisplayName(state, state.winnerId)}`);
   }
   return lines;
 }

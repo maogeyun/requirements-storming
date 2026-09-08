@@ -20,7 +20,13 @@ import {
   setupOkrRevealDemo,
   setupSprintAdvanceDemo,
 } from "@rs/rules-engine";
-import type { GameState, LegalAction, OkrEvaluation, TurnPhase } from "@rs/shared";
+import type {
+  GameState,
+  LegalAction,
+  MilestoneId,
+  OkrEvaluation,
+  TurnPhase,
+} from "@rs/shared";
 import { useMemo, useRef, useState } from "react";
 
 const PHASES: TurnPhase[] = ["draw", "plan", "execute", "end"];
@@ -43,6 +49,15 @@ type SettlementKind = "cross_line" | "okr_reveal" | "season_end" | null;
 function seatLabel(state: GameState, playerId: string | null | undefined): string {
   if (!playerId) return "—";
   return state.players.find((p) => p.id === playerId)?.displayName ?? "—";
+}
+
+/** Visible UI: milestone display name only — never leak internal ids (M1/M2/…). */
+function milestoneName(
+  state: GameState,
+  milestoneId: MilestoneId | null | undefined,
+): string {
+  if (!milestoneId) return "—";
+  return state.milestones.find((m) => m.id === milestoneId)?.name ?? "—";
 }
 
 function lastingEventCopy(state: GameState): string {
@@ -563,7 +578,7 @@ export default function PlayShellPage() {
           <section className="forced-window" role="alertdialog" aria-label="跨线补开暗标">
             <h2>必须补开，不能跳过</h2>
             <p>
-              里程碑 <strong>{pending.milestoneId}</strong>
+              里程碑 <strong>{milestoneName(state, pending.milestoneId)}</strong>
               ：未进冲刺区却将跨线，结算前强制补开暗标。
             </p>
             {state.pendingProgressSettlement && (
@@ -692,7 +707,7 @@ export default function PlayShellPage() {
           {darkBidZone.status !== "collapsed" && pending && (
             <span className="muted">
               {" "}
-              · {pending.milestoneId}
+              · {milestoneName(state, pending.milestoneId)}
               {pending.isCatchUp ? " · 补开" : ""}
             </span>
           )}
@@ -884,7 +899,9 @@ export default function PlayShellPage() {
                 <h2>跨线结算</h2>
                 {interaction?.type === "C13_WINDOW" ? (
                   <p>
-                    里程碑 <strong>{interaction.milestoneId}</strong> 突破者{" "}
+                    里程碑{" "}
+                    <strong>{milestoneName(state, interaction.milestoneId)}</strong>{" "}
+                    突破者{" "}
                     <strong>{seatLabel(state, interaction.breakerId)}</strong>
                     。可抢功或弃权；全员弃权后发放绩效。
                     {state.pendingPerformanceSettlementQueue.length > 0
@@ -894,7 +911,12 @@ export default function PlayShellPage() {
                 ) : state.pendingPerformanceSettlement ? (
                   <p>
                     里程碑{" "}
-                    <strong>{state.pendingPerformanceSettlement.milestoneId}</strong>{" "}
+                    <strong>
+                      {milestoneName(
+                        state,
+                        state.pendingPerformanceSettlement.milestoneId,
+                      )}
+                    </strong>{" "}
                     突破者{" "}
                     <strong>
                       {seatLabel(state, state.pendingPerformanceSettlement.breakerId)}

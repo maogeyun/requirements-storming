@@ -57,6 +57,7 @@ export const okrCards = okrCardsJson as OkrCardDefinition[];
 const actionCardMap = new Map(actionCards.map((c) => [c.id, c]));
 const eventCardMap = new Map(eventCards.map((c) => [c.id, c]));
 const okrCardMap = new Map(okrCards.map((c) => [c.id, c]));
+const requirementCardMap = new Map(requirementCards.map((c) => [c.id, c]));
 
 export function getActionCard(id: string): ActionCardWithMeta | undefined {
   return actionCardMap.get(id);
@@ -68,6 +69,10 @@ export function getEventCard(id: string): EventCardDefinition | undefined {
 
 export function getOkrCard(id: string): OkrCardDefinition | undefined {
   return okrCardMap.get(id);
+}
+
+export function getRequirementCard(id: string): RequirementCardDefinition | undefined {
+  return requirementCardMap.get(id);
 }
 
 /** O-05 团队基石：仅计 C-01～C-07，不含互动卡 C-12～C-14 */

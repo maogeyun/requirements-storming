@@ -13,12 +13,12 @@ import type {
 export function getDefaultRoomConfig(): RoomConfig {
   return {
     playerCount: 4,
-    sprintCount: 1,
+    sprintCount: 2,
     modules: {
       darkBid: true,
       interactionCards: true,
       hiddenOkr: true,
-      continuousSprint: false,
+      continuousSprint: true,
     },
     requirementId: "R-01",
   };

@@ -12,7 +12,9 @@ import {
   forceCatchUpProgressAttempt,
   forceFlipEvent,
   getCurrentPlayerId,
+  listBotActorSeats,
   listLegalActions,
+  pickHeuristicLegalAction,
   setupC12Demo,
   setupC13StealDemo,
   setupC14CounterDemo,
@@ -27,7 +29,7 @@ import type {
   OkrEvaluation,
   TurnPhase,
 } from "@rs/shared";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 const PHASES: TurnPhase[] = ["draw", "plan", "execute", "end"];
 const PHASE_LABEL: Record<TurnPhase, string> = {
@@ -40,6 +42,9 @@ const PHASE_LABEL: Record<TurnPhase, string> = {
 const RULES_VERSION = "v1.2";
 
 type Screen = "setup" | "play";
+
+/** 本地多人 = 座位轮流操作；人机 = 本座真人 + 其余 Bot */
+type PlayMode = "local" | "vs_bot";
 
 /** 相位条三类互斥、不可跳过强制窗 */
 type ForcedWindowKind = "catch_up_dark_bid" | "c14" | "sprint_switch" | null;
@@ -166,11 +171,62 @@ function handCardBadge(cardId: string): "A" | "I" {
   return "A";
 }
 
-function seatStatusCopy(isOwn: boolean, isTurn: boolean): string {
-  if (isOwn && isTurn) return "本座 · 轮到你";
-  if (isOwn) return "本座";
+function seatStatusCopy(opts: {
+  isHumanSeat: boolean;
+  isBot: boolean;
+  isTurn: boolean;
+  vsBot: boolean;
+}): string {
+  const { isHumanSeat, isBot, isTurn, vsBot } = opts;
+  if (vsBot) {
+    if (isHumanSeat) return "本座";
+    if (isBot && isTurn) return "行动中";
+    return "";
+  }
+  if (isHumanSeat && isTurn) return "本座 · 轮到你";
+  if (isHumanSeat) return "本座";
   if (isTurn) return "行动中";
   return "已入座";
+}
+
+/** 人机模式下：真人是否必须亲自处理当前强制窗 */
+function humanMustHandleForced(
+  state: GameState,
+  humanSeat: string,
+  forced: ForcedWindowKind,
+): boolean {
+  if (!forced) return false;
+  if (forced === "sprint_switch") return false;
+  if (forced === "c14") {
+    return (
+      state.pendingInteraction?.type === "C14" &&
+      state.pendingInteraction.targetId === humanSeat
+    );
+  }
+  if (forced === "catch_up_dark_bid") {
+    const pending = state.pendingDarkBid;
+    if (!pending || pending.resolved) return false;
+    return !(humanSeat in pending.bids);
+  }
+  return false;
+}
+
+function turnHudCopy(opts: {
+  vsBot: boolean;
+  isHumanTurn: boolean;
+  currentPlayerId: string | null;
+  state: GameState;
+  botAuto: boolean;
+}): string {
+  const { vsBot, isHumanTurn, currentPlayerId, state, botAuto } = opts;
+  if (!vsBot) {
+    return `该谁 · ${seatLabel(state, currentPlayerId)}`;
+  }
+  if (isHumanTurn) return "该你";
+  const seat = state.players.find((p) => p.id === currentPlayerId);
+  const role = seat?.displayName ?? "—";
+  const base = `Bot · ${role}`;
+  return botAuto ? `${base} · 自动中…` : base;
 }
 
 function forcedWindowPreview(
@@ -273,17 +329,27 @@ function mvpName(state: GameState): string {
 
 export default function PlayShellPage() {
   const [screen, setScreen] = useState<Screen>("setup");
+  const [playMode, setPlayMode] = useState<PlayMode>("local");
   const [playerCount, setPlayerCount] = useState(4);
   const [state, setState] = useState<GameState | null>(null);
   const [activeSeat, setActiveSeat] = useState("p1");
+  const [humanSeat, setHumanSeat] = useState("p1");
   const [log, setLog] = useState<string[]>([]);
   const [bidAmount, setBidAmount] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [sprintSwitchAckedKey, setSprintSwitchAckedKey] = useState<string | null>(null);
   const [settlementDismissedKey, setSettlementDismissedKey] = useState<string | null>(null);
+  const [botFlash, setBotFlash] = useState<string | null>(null);
   const phaseBarRef = useRef<HTMLElement | null>(null);
+  const botBusyRef = useRef(false);
 
+  const vsBot = playMode === "vs_bot";
   const currentPlayerId = state ? getCurrentPlayerId(state) : null;
+  const botSeatIds = useMemo(() => {
+    if (!state || !vsBot) return [] as string[];
+    return state.playerOrder.filter((id) => id !== humanSeat);
+  }, [state, vsBot, humanSeat]);
+
   const legal = useMemo(
     () => (state ? listLegalActions(state, activeSeat) : []),
     [state, activeSeat],
@@ -302,6 +368,15 @@ export default function PlayShellPage() {
     : null;
   const settlementOpen =
     Boolean(settlementKind && settlementKey && settlementKey !== settlementDismissedKey);
+
+  const humanForced =
+    state && vsBot
+      ? humanMustHandleForced(state, humanSeat, forced)
+      : forced !== null;
+  const showForcedUi = vsBot ? humanForced : forced !== null;
+  const botActors =
+    state && vsBot ? listBotActorSeats(state, botSeatIds) : [];
+  const botActing = vsBot && botActors.length > 0;
 
   function pushLog(lines: string[]) {
     if (lines.length === 0) return;
@@ -324,8 +399,19 @@ export default function PlayShellPage() {
     focusPhaseBar();
   }
 
+  function flashBotAuto(seatId: string, kind: string) {
+    const seatNo = state ? state.playerOrder.indexOf(seatId) + 1 : 0;
+    setBotFlash(`座位 ${seatNo} 已自动提交（${kind}）`);
+    window.setTimeout(() => setBotFlash(null), 900);
+  }
+
   function startGame() {
-    const names = Array.from({ length: playerCount }, (_, i) => `玩家${i + 1}`);
+    const names =
+      playMode === "vs_bot"
+        ? Array.from({ length: playerCount }, (_, i) =>
+            i === 0 ? "本座" : `Bot ${i + 1}`,
+          )
+        : Array.from({ length: playerCount }, (_, i) => `玩家${i + 1}`);
     const game = createGame({
       playerNames: names,
       config: {
@@ -339,14 +425,21 @@ export default function PlayShellPage() {
       },
       seed: Date.now() % 1_000_000,
     });
+    const firstSeat = game.playerOrder[0]!;
     setState(game);
-    setActiveSeat(game.playerOrder[0]!);
+    setHumanSeat(firstSeat);
+    setActiveSeat(firstSeat);
     setScreen("play");
     setSprintSwitchAckedKey(null);
     setSettlementDismissedKey(null);
+    setBotFlash(null);
     setLog([
-      `对局开始 · 规则 ${RULES_VERSION} · ${playerCount} 人 · 连续 Sprint×${game.config.sprintCount}`,
-      `座位：${game.players.map((p) => p.displayName).join("、")}`,
+      `对局开始 · 规则 ${RULES_VERSION} · ${playerCount} 人 · ${
+        playMode === "vs_bot" ? "人机" : "本地多人"
+      } · 连续 Sprint×${game.config.sprintCount}`,
+      playMode === "vs_bot"
+        ? `本座 ${firstSeat}；其余座位 Bot 自动行动`
+        : `座位：${game.players.map((p) => p.displayName).join("、")}`,
       `Sprint 1/${game.config.sprintCount} · 需求 ${requirementCopy(game)} · 目标进度 ${game.totalProgressTarget}`,
       "每人已暗抽 1 张 OKR（仅本座位可见）；绩效/OKR 跨 Sprint 结转",
     ]);
@@ -364,6 +457,21 @@ export default function PlayShellPage() {
       setError(action.reason ?? "动作不可用");
       return;
     }
+    if (vsBot && botActing && action.action.type !== "SUBMIT_DARK_BID") {
+      // Human may still bid while bots auto-bid; otherwise block proxy clicks
+      const humanTurn = currentPlayerId === humanSeat;
+      const humanC14 =
+        state.pendingInteraction?.type === "C14" &&
+        state.pendingInteraction.targetId === humanSeat;
+      const humanC13 =
+        state.pendingInteraction?.type === "C13_WINDOW" &&
+        humanSeat !== state.pendingInteraction.breakerId &&
+        !state.pendingInteraction.passedIds.includes(humanSeat);
+      if (!humanTurn && !humanC14 && !humanC13 && !humanForced) {
+        setError("Bot 回合自动中，无法代点");
+        return;
+      }
+    }
     const draft = cloneState(state);
     let payload = action.action;
     if (payload.type === "SUBMIT_DARK_BID") {
@@ -376,6 +484,78 @@ export default function PlayShellPage() {
     }
     commit(draft, result.events);
   }
+
+  function runBotStep() {
+    if (!state || !vsBot || state.gameOver || botBusyRef.current) return false;
+
+    // Sprint switch is UI-only — auto-ack so Bot flow never stalls
+    if (forced === "sprint_switch" && state.sprintSwitchInfo) {
+      botBusyRef.current = true;
+      setSprintSwitchAckedKey(sprintSwitchKey(state));
+      pushLog([`Bot 自动确认 Sprint 切换`]);
+      flashBotAuto(humanSeat, "Sprint 切换");
+      botBusyRef.current = false;
+      return true;
+    }
+
+    const actors = listBotActorSeats(state, botSeatIds);
+    if (actors.length === 0) return false;
+
+    const seat = actors[0]!;
+    const pick = pickHeuristicLegalAction(state, seat);
+    if (!pick || !pick.enabled) return false;
+
+    botBusyRef.current = true;
+    const draft = cloneState(state);
+    const result = applyAction(draft, pick.action);
+    if (!result.ok) {
+      setError(result.error);
+      botBusyRef.current = false;
+      return false;
+    }
+
+    const forcedKinds =
+      pick.action.type === "SUBMIT_DARK_BID" ||
+      pick.action.type === "DECLINE_C14" ||
+      pick.action.type === "RESPOND_C14" ||
+      pick.action.type === "PASS_C13" ||
+      pick.action.type === "RESPOND_C13";
+    if (forcedKinds) {
+      const kind =
+        pick.action.type === "SUBMIT_DARK_BID"
+          ? "暗标"
+          : pick.action.type === "DECLINE_C14" ||
+              pick.action.type === "RESPOND_C14"
+            ? "C-14"
+            : "C-13";
+      flashBotAuto(seat, kind);
+    }
+
+    commit(draft, [`Bot（${seatLabel(draft, seat)}）· ${pick.label}`, ...result.events]);
+    botBusyRef.current = false;
+    return true;
+  }
+
+  useEffect(() => {
+    if (screen !== "play" || !state || !vsBot || state.gameOver) return;
+    const needsSprint =
+      forced === "sprint_switch" && Boolean(state.sprintSwitchInfo);
+    const actors = listBotActorSeats(state, botSeatIds);
+    if (!needsSprint && actors.length === 0) return;
+
+    const timer = window.setTimeout(() => {
+      runBotStep();
+    }, 280);
+    return () => window.clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- drive off state fingerprint
+  }, [
+    screen,
+    vsBot,
+    state,
+    botSeatIds,
+    forced,
+    sprintSwitchAckedKey,
+  ]);
 
   function runCatchUpDemo() {
     if (!state) return;
@@ -464,12 +644,40 @@ export default function PlayShellPage() {
           <p className="eyebrow">Requirement Storm</p>
           <h1>需求风暴</h1>
           <p className="lede">
-            连续 Sprint×2 · 事件 + 互动 + 隐藏 OKR · 本地多座位 · 规则 {RULES_VERSION}
+            连续 Sprint×2 · 事件 + 互动 + 隐藏 OKR ·{" "}
+            {playMode === "vs_bot" ? "人机对本座" : "本地多座位"} · 规则 {RULES_VERSION}
           </p>
         </header>
 
         <section className="setup">
           <h2>开局确认</h2>
+          <fieldset className="field mode-toggle">
+            <legend>对局模式</legend>
+            <label className={`mode-option ${playMode === "local" ? "active" : ""}`}>
+              <input
+                type="radio"
+                name="play-mode"
+                checked={playMode === "local"}
+                onChange={() => setPlayMode("local")}
+              />
+              <span>本地多人</span>
+            </label>
+            <label className={`mode-option ${playMode === "vs_bot" ? "active" : ""}`}>
+              <input
+                type="radio"
+                name="play-mode"
+                checked={playMode === "vs_bot"}
+                onChange={() => setPlayMode("vs_bot")}
+              />
+              <span>人机</span>
+            </label>
+          </fieldset>
+          {playMode === "vs_bot" && (
+            <p className="mode-hint">
+              座位 1 = 本座（真人）；其余座位 = Bot（默认 {playerCount} 人时座位 2–
+              {playerCount} 为 Bot）。人数变更时仍保持本座 1 + 其余 Bot。
+            </p>
+          )}
           <label className="field">
             <span>人数（座位）</span>
             <select
@@ -508,7 +716,9 @@ export default function PlayShellPage() {
   const activePlayer = state.players.find((p) => p.id === activeSeat)!;
   const darkBidZone = darkBidZoneCopy(state);
   const preview = forcedWindowPreview(state, forced);
-  const opsBlocked = forced !== null;
+  const opsBlocked = showForcedUi;
+  const isHumanTurn = currentPlayerId === humanSeat;
+  const actionBarLocked = vsBot && !isHumanTurn && !humanForced && botActing;
   const selfOkr = activePlayer.okrId ? getOkrCard(activePlayer.okrId) : undefined;
   const progressPct = Math.min(
     100,
@@ -517,9 +727,14 @@ export default function PlayShellPage() {
 
   return (
     <main className="table-shell">
+      {botFlash && (
+        <div className="bot-flash" role="status" aria-live="polite">
+          {botFlash}
+        </div>
+      )}
       {/* 1. Phase bar — 全局置顶 */}
       <header
-        className={`phase-bar ${forced ? "busy" : "idle"}`}
+        className={`phase-bar ${showForcedUi ? "busy" : "idle"}`}
         aria-label="相位条"
         tabIndex={-1}
         ref={phaseBarRef}
@@ -546,12 +761,12 @@ export default function PlayShellPage() {
           <span>
             当前阶段：{PHASE_LABEL[state.turnPhase]}
           </span>
-          {forced || preview ? (
+          {showForcedUi || preview ? (
             <span className="phase-preview">{preview ?? "强制窗进行中"}</span>
           ) : null}
         </div>
 
-        {forced === "c14" && interaction?.type === "C14" && (
+        {showForcedUi && forced === "c14" && interaction?.type === "C14" && (
           <section className="forced-window" role="alertdialog" aria-label="C-14 响应">
             <h2>必须响应 C-14，不能跳过</h2>
             <p>
@@ -583,7 +798,7 @@ export default function PlayShellPage() {
           </section>
         )}
 
-        {forced === "catch_up_dark_bid" && pending && !pending.resolved && (
+        {showForcedUi && forced === "catch_up_dark_bid" && pending && !pending.resolved && (
           <section
             className="forced-window catch-up"
             role="alertdialog"
@@ -644,7 +859,7 @@ export default function PlayShellPage() {
           </section>
         )}
 
-        {forced === "sprint_switch" && state.sprintSwitchInfo && (
+        {showForcedUi && forced === "sprint_switch" && state.sprintSwitchInfo && (
           <section className="forced-window sprint" role="alertdialog" aria-label="Sprint 切换">
             <h2>
               Sprint 切换 {state.sprintSwitchInfo.fromSprint} →{" "}
@@ -738,22 +953,40 @@ export default function PlayShellPage() {
       <section className="seat-ring" aria-label="座位环">
         <div className="seat-ring-grid">
           {state.players.map((p) => {
-            const isOwn = p.id === activeSeat;
+            const isHumanSeat = p.id === humanSeat;
+            const isBot = vsBot && !isHumanSeat;
+            const isOwn = vsBot ? isHumanSeat : p.id === activeSeat;
             const isTurn = p.id === currentPlayerId;
             const okrDef = p.okrId ? getOkrCard(p.okrId) : undefined;
             const debtPressure = p.personalDebt > 0 || p.personalBugs > 0;
+            const canSwitchSeat = !vsBot;
             return (
               <button
                 key={p.id}
                 type="button"
-                className={`seat-chip ${isTurn ? "turn" : ""} ${isOwn ? "own" : ""}`}
-                onClick={() => setActiveSeat(p.id)}
+                className={`seat-chip ${isTurn ? "turn" : ""} ${isOwn ? "own" : ""} ${
+                  isBot ? "bot" : ""
+                }`}
+                disabled={vsBot && isBot}
+                onClick={() => {
+                  if (canSwitchSeat) setActiveSeat(p.id);
+                }}
               >
                 <div className="seat-chip-head">
                   <span className="seat-color" aria-hidden />
                   <div className="seat-titles">
-                    <strong>{p.displayName}</strong>
-                    <span className="seat-status">{seatStatusCopy(isOwn, isTurn)}</span>
+                    <strong>
+                      {p.displayName}
+                      {isBot ? <span className="bot-tag"> Bot</span> : null}
+                    </strong>
+                    <span className="seat-status">
+                      {seatStatusCopy({
+                        isHumanSeat: isOwn,
+                        isBot,
+                        isTurn,
+                        vsBot,
+                      })}
+                    </span>
                   </div>
                 </div>
                 <div className="seat-stats">
@@ -806,9 +1039,11 @@ export default function PlayShellPage() {
         </div>
 
         <div
-          className={`local-ops ${opsBlocked ? "covered" : ""}`}
+          className={`local-ops ${opsBlocked ? "covered" : ""} ${
+            actionBarLocked ? "bot-locked" : ""
+          }`}
           aria-label="本座操作"
-          aria-disabled={opsBlocked}
+          aria-disabled={opsBlocked || actionBarLocked}
         >
           {opsBlocked && (
             <div className="ops-cover" aria-hidden>
@@ -818,7 +1053,15 @@ export default function PlayShellPage() {
 
           <div className="ops-meta">
             <span className="phase-copy">当前阶段 · {PHASE_LABEL[state.turnPhase]}</span>
-            <span className="turn-copy">该谁 · {seatLabel(state, currentPlayerId)}</span>
+            <span className="turn-copy">
+              {turnHudCopy({
+                vsBot,
+                isHumanTurn,
+                currentPlayerId,
+                state,
+                botAuto: botActing,
+              })}
+            </span>
           </div>
 
           <div className="local-okr">
@@ -849,9 +1092,13 @@ export default function PlayShellPage() {
                 <button
                   key={`${item.label}-${index}`}
                   type="button"
-                  disabled={!item.enabled || opsBlocked}
-                  title={item.reason}
-                  className={!item.enabled ? "illegal" : undefined}
+                  disabled={!item.enabled || opsBlocked || actionBarLocked}
+                  title={
+                    actionBarLocked
+                      ? "Bot 回合自动中"
+                      : item.reason
+                  }
+                  className={!item.enabled || actionBarLocked ? "illegal" : undefined}
                   onClick={() => runLegal(item)}
                 >
                   {item.label}

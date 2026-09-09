@@ -33,3 +33,4 @@ export {
   setupSprintAdvanceDemo,
 } from "./actions";
 export type { ApplyActionResult, ApplyResult } from "./actions";
+export { listBotActorSeats, pickHeuristicLegalAction } from "./bot";

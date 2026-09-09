@@ -155,12 +155,22 @@ function seriesProgressCopy(state: GameState): string {
   const sprintLabel = state.config.modules.continuousSprint
     ? `Sprint ${state.sprint}/${state.config.sprintCount}`
     : `Sprint ${state.sprint}`;
-  const seriesDone =
-    (state.sprint - 1) * state.totalProgressTarget + state.progress;
-  const seriesTarget = state.config.modules.continuousSprint
-    ? state.config.sprintCount * state.totalProgressTarget
-    : state.totalProgressTarget;
-  return `${sprintLabel} · 系列进度 ${seriesDone}/${seriesTarget}`;
+  return `${sprintLabel} · 公共进度 ${state.progress}/${state.totalProgressTarget}`;
+}
+
+/** Card family badge for Busy card weight (A action / I interact·collab). */
+function handCardBadge(cardId: string): "A" | "I" {
+  const card = getActionCard(cardId);
+  if (!card) return "A";
+  if (card.category === "collab" || card.isInteraction) return "I";
+  return "A";
+}
+
+function seatStatusCopy(isOwn: boolean, isTurn: boolean): string {
+  if (isOwn && isTurn) return "本座 · 轮到你";
+  if (isOwn) return "本座";
+  if (isTurn) return "行动中";
+  return "已入座";
 }
 
 function forcedWindowPreview(
@@ -517,7 +527,6 @@ export default function PlayShellPage() {
         <div className="phase-bar-main">
           <div className="phase-bar-title">
             <strong>需求风暴</strong>
-            <span className="muted"> · {RULES_VERSION}</span>
           </div>
           <div className="phase-steps" aria-label="回合四阶段">
             {PHASES.map((phase) => (
@@ -535,7 +544,7 @@ export default function PlayShellPage() {
         </div>
         <div className="phase-bar-status">
           <span>
-            当前阶段：<strong>{PHASE_LABEL[state.turnPhase]}</strong>
+            当前阶段：{PHASE_LABEL[state.turnPhase]}
           </span>
           {forced || preview ? (
             <span className="phase-preview">{preview ?? "强制窗进行中"}</span>
@@ -575,7 +584,11 @@ export default function PlayShellPage() {
         )}
 
         {forced === "catch_up_dark_bid" && pending && !pending.resolved && (
-          <section className="forced-window" role="alertdialog" aria-label="跨线补开暗标">
+          <section
+            className="forced-window catch-up"
+            role="alertdialog"
+            aria-label="跨线补开暗标"
+          >
             <h2>必须补开，不能跳过</h2>
             <p>
               里程碑 <strong>{milestoneName(state, pending.milestoneId)}</strong>
@@ -654,19 +667,16 @@ export default function PlayShellPage() {
         )}
       </header>
 
-      {/* 2. Table center — 公共状态 */}
+      {/* 2. Table center — 舞台桌场域 */}
       <section className="table-center" aria-label="桌心公共区">
         <div className="series-line">{seriesProgressCopy(state)}</div>
 
         <div className="progress-block">
           <div className="progress-meta">
-            <span>
-              公共进度 {state.progress}/{state.totalProgressTarget}
-            </span>
             {state.publicDebt > 0 ? (
-              <span className="warn">公共债 {state.publicDebt}</span>
+              <span className="pressure">公共债 {state.publicDebt}</span>
             ) : (
-              <span className="muted">公共债 0</span>
+              <span>公共债 0</span>
             )}
           </div>
           <div className="progress-track" aria-hidden>
@@ -691,36 +701,47 @@ export default function PlayShellPage() {
           </div>
         </div>
 
-        <div className="req-card skeleton-slot">
-          <span className="slot-label">当前需求</span>
-          <strong>{requirementCopy(state)}</strong>
-        </div>
+        <div className="table-slots">
+          <div className="stage-card req-face" aria-label="当前需求">
+            <span className="card-badge">R</span>
+            <span className="slot-label">当前需求</span>
+            <strong>{requirementCopy(state)}</strong>
+          </div>
 
-        <div className="event-bar skeleton-slot">
-          <span className="slot-label">事件</span>
-          <span>{eventBarCopy(state)}</span>
-        </div>
+          <div
+            className={`stage-card event-slot ${
+              state.eventFlippedThisRound && state.currentEventId ? "filled" : "empty"
+            }`}
+            aria-label="事件"
+          >
+            <span className="slot-label">事件</span>
+            <span>{eventBarCopy(state)}</span>
+          </div>
 
-        <div className={`dark-bid-zone skeleton-slot ${darkBidZone.status}`}>
-          <span className="slot-label">暗标区</span>
-          <span>{darkBidZone.label}</span>
-          {darkBidZone.status !== "collapsed" && pending && (
-            <span className="muted">
-              {" "}
-              · {milestoneName(state, pending.milestoneId)}
-              {pending.isCatchUp ? " · 补开" : ""}
-            </span>
-          )}
+          <div
+            className={`stage-card dark-bid-slot ${darkBidZone.status}`}
+            aria-label="暗标区"
+          >
+            <p className="dark-bid-mark">RS</p>
+            <span className="status-copy">{darkBidZone.label}</span>
+            {darkBidZone.status !== "collapsed" && pending && (
+              <span className="muted" style={{ fontSize: "0.65rem" }}>
+                {milestoneName(state, pending.milestoneId)}
+                {pending.isCatchUp ? " · 补开" : ""}
+              </span>
+            )}
+          </div>
         </div>
       </section>
 
-      {/* 3. Seat ring */}
+      {/* 3. Seat ring — 局况 HUD */}
       <section className="seat-ring" aria-label="座位环">
         <div className="seat-ring-grid">
           {state.players.map((p) => {
             const isOwn = p.id === activeSeat;
             const isTurn = p.id === currentPlayerId;
             const okrDef = p.okrId ? getOkrCard(p.okrId) : undefined;
+            const debtPressure = p.personalDebt > 0 || p.personalBugs > 0;
             return (
               <button
                 key={p.id}
@@ -729,19 +750,18 @@ export default function PlayShellPage() {
                 onClick={() => setActiveSeat(p.id)}
               >
                 <div className="seat-chip-head">
-                  <strong>{p.displayName}</strong>
-                  {isOwn ? <span className="own-tag">本座</span> : null}
-                  {isTurn ? <span className="turn-tag">行动中</span> : null}
+                  <span className="seat-color" aria-hidden />
+                  <div className="seat-titles">
+                    <strong>{p.displayName}</strong>
+                    <span className="seat-status">{seatStatusCopy(isOwn, isTurn)}</span>
+                  </div>
                 </div>
                 <div className="seat-stats">
                   <span>绩效 {p.performance}</span>
-                  <span>
-                    工时 {p.workHoursRemaining}/{p.workHoursBudget}
-                  </span>
-                  <span>
+                  <span>手牌 {p.hand.length}</span>
+                  <span className={debtPressure ? "pressure" : undefined}>
                     债 {p.personalDebt} · Bug {p.personalBugs}
                   </span>
-                  <span>手牌 {p.hand.length}</span>
                 </div>
                 <div className="seat-okr">
                   {state.okrRevealed ? (
@@ -758,50 +778,26 @@ export default function PlayShellPage() {
         </div>
       </section>
 
-      {/* 4. Local seat ops — 仅本座 */}
-      <section
-        className={`local-ops ${opsBlocked ? "covered" : ""}`}
-        aria-label="本座操作"
-        aria-disabled={opsBlocked}
-      >
-        {opsBlocked && (
-          <div className="ops-cover" aria-hidden>
-            <span>强制窗进行中 · 完成本座强制响应后继续</span>
-          </div>
-        )}
-
-        <div className="local-okr">
-          <h2>本座 OKR</h2>
-          {state.okrRevealed && state.okrSettlements ? (
-            (() => {
-              const row = state.okrSettlements.find((r) => r.playerId === activeSeat);
-              return (
-                <p>
-                  {row
-                    ? `${row.name} · ${row.achieved ? `达成 +${row.reward}` : "未达成"}`
-                    : "—"}
-                </p>
-              );
-            })()
-          ) : (
-            <>
-              <p className="okr-title-line">{selfOkr?.name ?? "未抽取"}</p>
-              <p className="muted">{selfOkr?.conditionText ?? "开局暗抽，总结算亮牌"}</p>
-            </>
-          )}
-        </div>
-
-        <div className="local-hand">
+      {/* 4. Local hand + ops — 仅本座可见内容 */}
+      <section className="local-zone" aria-label="本座区">
+        <div className="local-hand-block">
           <h2>本座手牌</h2>
           {activePlayer.hand.length === 0 ? (
             <p className="muted">空手牌</p>
           ) : (
-            <ul className="hand-expanded">
+            <ul className="hand-fan">
               {activePlayer.hand.map((cardId, index) => {
                 const card = getActionCard(cardId);
+                const badge = handCardBadge(cardId);
                 return (
                   <li key={`${cardId}-${index}`}>
-                    {card ? `${card.name}（${card.workHours}h）` : "未知卡"}
+                    <span className={`card-badge ${badge === "I" ? "accent" : ""}`}>
+                      {badge}
+                    </span>
+                    <span className="hand-card-name">{card?.name ?? "未知卡"}</span>
+                    <span className="hand-card-meta">
+                      {card ? `+${card.workHours}h` : "—"}
+                    </span>
                   </li>
                 );
               })}
@@ -809,26 +805,62 @@ export default function PlayShellPage() {
           )}
         </div>
 
-        <div className="local-actions">
-          <h2>本座动作 · {PHASE_LABEL[state.turnPhase]}</h2>
-          {error && <p className="error">{error}</p>}
-          <div className="action-list">
-            {legal.map((item, index) => (
-              <button
-                key={`${item.label}-${index}`}
-                type="button"
-                disabled={!item.enabled || opsBlocked}
-                title={item.reason}
-                className={!item.enabled ? "illegal" : undefined}
-                onClick={() => runLegal(item)}
-              >
-                {item.label}
-                {!item.enabled && item.reason ? ` — ${item.reason}` : ""}
-              </button>
-            ))}
+        <div
+          className={`local-ops ${opsBlocked ? "covered" : ""}`}
+          aria-label="本座操作"
+          aria-disabled={opsBlocked}
+        >
+          {opsBlocked && (
+            <div className="ops-cover" aria-hidden>
+              <span>强制窗进行中 · 完成本座强制响应后继续</span>
+            </div>
+          )}
+
+          <div className="ops-meta">
+            <span className="phase-copy">当前阶段 · {PHASE_LABEL[state.turnPhase]}</span>
+            <span className="turn-copy">该谁 · {seatLabel(state, currentPlayerId)}</span>
+          </div>
+
+          <div className="local-okr">
+            <h2>本座 OKR</h2>
+            {state.okrRevealed && state.okrSettlements ? (
+              (() => {
+                const row = state.okrSettlements.find((r) => r.playerId === activeSeat);
+                return (
+                  <p>
+                    {row
+                      ? `${row.name} · ${row.achieved ? `达成 +${row.reward}` : "未达成"}`
+                      : "—"}
+                  </p>
+                );
+              })()
+            ) : (
+              <>
+                <p className="okr-title-line">{selfOkr?.name ?? "未抽取"}</p>
+                <p className="muted">{selfOkr?.conditionText ?? "开局暗抽，总结算亮牌"}</p>
+              </>
+            )}
+          </div>
+
+          <div className="local-actions">
+            {error && <p className="error">{error}</p>}
+            <div className="action-list">
+              {legal.map((item, index) => (
+                <button
+                  key={`${item.label}-${index}`}
+                  type="button"
+                  disabled={!item.enabled || opsBlocked}
+                  title={item.reason}
+                  className={!item.enabled ? "illegal" : undefined}
+                  onClick={() => runLegal(item)}
+                >
+                  {item.label}
+                  {!item.enabled && item.reason ? ` — ${item.reason}` : ""}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
-
       </section>
 
       <details className="demo-drawer">
@@ -873,7 +905,15 @@ export default function PlayShellPage() {
       {/* 5. Settlement layer — 模态浮层 */}
       {settlementOpen && settlementKind && (
         <div className="settlement-layer" role="dialog" aria-modal="true" aria-label="结算层">
-          <div className="settlement-panel">
+          <div
+            className={`settlement-panel ${
+              settlementKind === "okr_reveal"
+                ? "okr-reveal"
+                : settlementKind === "cross_line"
+                  ? "cross-line"
+                  : ""
+            }`}
+          >
             {settlementKind === "okr_reveal" && state.okrSettlements && (
               <>
                 <h2>系列结算 · OKR 亮牌</h2>

@@ -226,11 +226,8 @@ function turnHudCopy(opts: {
   }
   if (isHumanTurn) return "该你";
   const seat = state.players.find((p) => p.id === currentPlayerId);
-  const seatNo = currentPlayerId
-    ? state.playerOrder.indexOf(currentPlayerId) + 1
-    : 0;
   const role = seat?.displayName ?? "—";
-  const base = `Bot · 座位 ${seatNo} / ${role}`;
+  const base = `Bot · ${role}`;
   return botAuto ? `${base} · 自动中…` : base;
 }
 

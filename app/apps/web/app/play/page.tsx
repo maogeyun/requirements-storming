@@ -179,11 +179,9 @@ function seatStatusCopy(opts: {
 }): string {
   const { isHumanSeat, isBot, isTurn, vsBot } = opts;
   if (vsBot) {
-    if (isHumanSeat && isTurn) return "本座";
     if (isHumanSeat) return "本座";
     if (isBot && isTurn) return "行动中";
-    if (isBot) return "Bot";
-    return "已入座";
+    return "";
   }
   if (isHumanSeat && isTurn) return "本座 · 轮到你";
   if (isHumanSeat) return "本座";

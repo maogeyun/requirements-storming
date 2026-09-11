@@ -30,6 +30,19 @@ import type {
   TurnPhase,
 } from "@rs/shared";
 import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  barActionLabel,
+  compactVariantLabel,
+  enabledPlayActions,
+  handCardBadge,
+  handCardCostCopy,
+  handCardEffectLine,
+  illegalReasonForCard,
+  isNonCardBarAction,
+  playActionsForCard,
+  playVariantKey,
+  type TableDetailKind,
+} from "./card-ui";
 
 const PHASES: TurnPhase[] = ["draw", "plan", "execute", "end"];
 const PHASE_LABEL: Record<TurnPhase, string> = {
@@ -161,14 +174,6 @@ function seriesProgressCopy(state: GameState): string {
     ? `Sprint ${state.sprint}/${state.config.sprintCount}`
     : `Sprint ${state.sprint}`;
   return `${sprintLabel} · 公共进度 ${state.progress}/${state.totalProgressTarget}`;
-}
-
-/** Card family badge for Busy card weight (A action / I interact·collab). */
-function handCardBadge(cardId: string): "A" | "I" {
-  const card = getActionCard(cardId);
-  if (!card) return "A";
-  if (card.category === "collab" || card.isInteraction) return "I";
-  return "A";
 }
 
 function seatStatusCopy(opts: {
@@ -340,8 +345,13 @@ export default function PlayShellPage() {
   const [sprintSwitchAckedKey, setSprintSwitchAckedKey] = useState<string | null>(null);
   const [settlementDismissedKey, setSettlementDismissedKey] = useState<string | null>(null);
   const [botFlash, setBotFlash] = useState<string | null>(null);
+  const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
+  const [selectedVariantKey, setSelectedVariantKey] = useState<string | null>(null);
+  const [illegalHint, setIllegalHint] = useState<string | null>(null);
+  const [tableDetail, setTableDetail] = useState<TableDetailKind>(null);
   const phaseBarRef = useRef<HTMLElement | null>(null);
   const botBusyRef = useRef(false);
+  const illegalPressTimer = useRef<number | null>(null);
 
   const vsBot = playMode === "vs_bot";
   const currentPlayerId = state ? getCurrentPlayerId(state) : null;
@@ -354,6 +364,35 @@ export default function PlayShellPage() {
     () => (state ? listLegalActions(state, activeSeat) : []),
     [state, activeSeat],
   );
+
+  const barActions = useMemo(
+    () => legal.filter((item) => isNonCardBarAction(item.action)),
+    [legal],
+  );
+
+  const selectedPlayOptions = useMemo(() => {
+    if (!selectedCardId) return [] as LegalAction[];
+    return enabledPlayActions(legal, selectedCardId);
+  }, [legal, selectedCardId]);
+
+  const selectedPlayAction = useMemo(() => {
+    if (selectedPlayOptions.length === 0) return null;
+    if (selectedPlayOptions.length === 1) return selectedPlayOptions[0]!;
+    if (!selectedVariantKey) return null;
+    return (
+      selectedPlayOptions.find(
+        (item) =>
+          item.action.type === "PLAY_CARD" &&
+          playVariantKey(item.action) === selectedVariantKey,
+      ) ?? null
+    );
+  }, [selectedPlayOptions, selectedVariantKey]);
+
+  function clearCardSelection() {
+    setSelectedCardId(null);
+    setSelectedVariantKey(null);
+    setIllegalHint(null);
+  }
 
   const forced = state ? detectForcedWindow(state, sprintSwitchAckedKey) : null;
   const settlementKind = state ? detectSettlement(state) : null;
@@ -377,6 +416,9 @@ export default function PlayShellPage() {
   const botActors =
     state && vsBot ? listBotActorSeats(state, botSeatIds) : [];
   const botActing = vsBot && botActors.length > 0;
+  const isHumanTurn = currentPlayerId === humanSeat;
+  const opsBlocked = showForcedUi;
+  const actionBarLocked = Boolean(vsBot && !isHumanTurn && !humanForced && botActing);
 
   function pushLog(lines: string[]) {
     if (lines.length === 0) return;
@@ -433,6 +475,8 @@ export default function PlayShellPage() {
     setSprintSwitchAckedKey(null);
     setSettlementDismissedKey(null);
     setBotFlash(null);
+    clearCardSelection();
+    setTableDetail(null);
     setLog([
       `对局开始 · 规则 ${RULES_VERSION} · ${playerCount} 人 · ${
         playMode === "vs_bot" ? "人机" : "本地多人"
@@ -450,6 +494,7 @@ export default function PlayShellPage() {
     setState(cloneState(next));
     pushLog(events);
     setError(null);
+    clearCardSelection();
   }
 
   function runLegal(action: LegalAction) {
@@ -483,6 +528,65 @@ export default function PlayShellPage() {
       return;
     }
     commit(draft, result.events);
+  }
+
+  function confirmSelectedPlay() {
+    if (!selectedPlayAction) {
+      if (selectedCardId && selectedPlayOptions.length > 1 && !selectedVariantKey) {
+        setIllegalHint("请选择目标后再确认打出");
+        return;
+      }
+      setError("请先点选手牌中的可打出牌");
+      return;
+    }
+    runLegal(selectedPlayAction);
+  }
+
+  function onHandCardActivate(cardId: string) {
+    if (opsBlocked || actionBarLocked) return;
+    const enabled = enabledPlayActions(legal, cardId);
+    const turnAllowsPlay =
+      state?.turnPhase === "execute" &&
+      currentPlayerId === activeSeat &&
+      Boolean(state.eventFlippedThisRound) &&
+      !state.pendingInteraction &&
+      !(state.pendingDarkBid && !state.pendingDarkBid.resolved);
+
+    if (enabled.length === 0) {
+      const reason = illegalReasonForCard(legal, cardId, turnAllowsPlay);
+      setIllegalHint(`为何不可：${reason}`);
+      setSelectedCardId(null);
+      setSelectedVariantKey(null);
+      return;
+    }
+
+    setIllegalHint(null);
+    if (selectedCardId === cardId) {
+      if (enabled.length === 1) {
+        runLegal(enabled[0]!);
+        return;
+      }
+      if (selectedPlayAction) {
+        runLegal(selectedPlayAction);
+        return;
+      }
+      setIllegalHint("请选择目标后再打出");
+      return;
+    }
+
+    setSelectedCardId(cardId);
+    if (enabled.length === 1 && enabled[0]!.action.type === "PLAY_CARD") {
+      setSelectedVariantKey(playVariantKey(enabled[0]!.action));
+    } else {
+      setSelectedVariantKey(null);
+    }
+  }
+
+  function clearIllegalPressTimer() {
+    if (illegalPressTimer.current != null) {
+      window.clearTimeout(illegalPressTimer.current);
+      illegalPressTimer.current = null;
+    }
   }
 
   function runBotStep() {
@@ -716,17 +820,34 @@ export default function PlayShellPage() {
   const activePlayer = state.players.find((p) => p.id === activeSeat)!;
   const darkBidZone = darkBidZoneCopy(state);
   const preview = forcedWindowPreview(state, forced);
-  const opsBlocked = showForcedUi;
-  const isHumanTurn = currentPlayerId === humanSeat;
-  const actionBarLocked = vsBot && !isHumanTurn && !humanForced && botActing;
   const selfOkr = activePlayer.okrId ? getOkrCard(activePlayer.okrId) : undefined;
   const progressPct = Math.min(
     100,
     Math.round((state.progress / Math.max(1, state.totalProgressTarget)) * 100),
   );
+  const darkBidMax = state.config.darkBidMax ?? state.constants.darkBidMax;
+  const reqDef = state.requirementId ? getRequirementCard(state.requirementId) : undefined;
+  const eventDef =
+    state.eventFlippedThisRound && state.currentEventId
+      ? getEventCard(state.currentEventId)
+      : undefined;
 
   return (
-    <main className="table-shell">
+    <main
+      className="table-shell"
+      onClick={(e) => {
+        const target = e.target as HTMLElement | null;
+        if (!target) return;
+        if (
+          target.closest(
+            ".hand-card, .local-ops, .forced-window, .settlement-layer, .target-row, .stage-card, .table-detail-layer, .seat-chip, .demo-drawer, .log-drawer, .phase-bar, .hand-head",
+          )
+        ) {
+          return;
+        }
+        clearCardSelection();
+      }}
+    >
       {botFlash && (
         <div className="bot-flash" role="status" aria-live="polite">
           {botFlash}
@@ -816,16 +937,21 @@ export default function PlayShellPage() {
               </p>
             )}
             <div className="bid-row">
-              <label>
-                你的出价（0–{state.config.darkBidMax ?? state.constants.darkBidMax}）
-                <input
-                  type="number"
-                  min={0}
-                  max={state.config.darkBidMax ?? state.constants.darkBidMax}
-                  value={bidAmount}
-                  onChange={(e) => setBidAmount(Number(e.target.value))}
-                />
-              </label>
+              <p className="bid-label">
+                你的出价（0–{darkBidMax}）
+              </p>
+              <div className="bid-pills" role="group" aria-label="暗标出价">
+                {Array.from({ length: darkBidMax + 1 }, (_, amount) => (
+                  <button
+                    key={`bid-pill-${amount}`}
+                    type="button"
+                    className={`bid-pill ${bidAmount === amount ? "selected" : ""}`}
+                    onClick={() => setBidAmount(amount)}
+                  >
+                    {amount}
+                  </button>
+                ))}
+              </div>
               <p className="muted">
                 已出价：
                 {state.playerOrder
@@ -917,28 +1043,60 @@ export default function PlayShellPage() {
         </div>
 
         <div className="table-slots">
-          <div className="stage-card req-face" aria-label="当前需求">
+          <button
+            type="button"
+            className={`stage-card req-face ${tableDetail === "requirement" ? "detail-open" : ""}`}
+            aria-label="当前需求"
+            aria-expanded={tableDetail === "requirement"}
+            onClick={() =>
+              setTableDetail((prev) => (prev === "requirement" ? null : "requirement"))
+            }
+          >
             <span className="card-badge">R</span>
             <span className="slot-label">当前需求</span>
             <strong>{requirementCopy(state)}</strong>
-          </div>
+            {reqDef ? (
+              <span className="stage-card-meta">难度 {reqDef.difficulty}</span>
+            ) : (
+              <span className="stage-card-meta muted-slot">空槽说明</span>
+            )}
+          </button>
 
-          <div
+          <button
+            type="button"
             className={`stage-card event-slot ${
-              state.eventFlippedThisRound && state.currentEventId ? "filled" : "empty"
-            }`}
+              eventDef ? "filled" : "empty"
+            } ${tableDetail === "event" ? "detail-open" : ""}`}
             aria-label="事件"
+            aria-expanded={tableDetail === "event"}
+            disabled={!eventDef}
+            onClick={() => {
+              if (!eventDef) return;
+              setTableDetail((prev) => (prev === "event" ? null : "event"));
+            }}
           >
-            <span className="slot-label">事件</span>
-            <span>{eventBarCopy(state)}</span>
-          </div>
+            {eventDef ? (
+              <>
+                <span className="card-badge">E</span>
+                <span className="slot-label">事件</span>
+                <strong className="event-name">{eventDef.name}</strong>
+                <span className="stage-card-meta">{eventDef.trigger}</span>
+              </>
+            ) : (
+              <>
+                <span className="slot-label">事件</span>
+                <span>{eventBarCopy(state)}</span>
+              </>
+            )}
+          </button>
 
           <div
-            className={`stage-card dark-bid-slot ${darkBidZone.status}`}
-            aria-label="暗标区"
+            className={`stage-card dark-bid-slot ${darkBidZone.status} fogged`}
+            aria-label="暗标区（背面，不可窥视）"
           >
             <p className="dark-bid-mark">RS</p>
             <span className="status-copy">{darkBidZone.label}</span>
+            <span className="fog-copy">背面 · 不可窥视</span>
             {darkBidZone.status !== "collapsed" && pending && (
               <span className="muted" style={{ fontSize: "0.65rem" }}>
                 {milestoneName(state, pending.milestoneId)}
@@ -947,6 +1105,42 @@ export default function PlayShellPage() {
             )}
           </div>
         </div>
+
+        {tableDetail === "requirement" && (
+          <div className="table-detail-layer" role="dialog" aria-label="需求详情">
+            <button
+              type="button"
+              className="table-detail-card"
+              onClick={() => setTableDetail(null)}
+            >
+              <span className="card-badge">R</span>
+              <strong>{reqDef?.name ?? "本 Sprint 未抽需求"}</strong>
+              <span className="detail-cost">
+                {reqDef ? `难度 ${reqDef.difficulty}` : "—"}
+              </span>
+              <p className="detail-effect">
+                {reqDef?.mechanismText ?? "空槽：本 Sprint 尚未抽出需求牌。"}
+              </p>
+              <span className="detail-close-hint">再次点击关闭</span>
+            </button>
+          </div>
+        )}
+
+        {tableDetail === "event" && eventDef && (
+          <div className="table-detail-layer" role="dialog" aria-label="事件详情">
+            <button
+              type="button"
+              className="table-detail-card"
+              onClick={() => setTableDetail(null)}
+            >
+              <span className="card-badge">E</span>
+              <strong>{eventDef.name}</strong>
+              <span className="detail-cost">{eventDef.trigger}</span>
+              <p className="detail-effect">{eventDef.effectText}</p>
+              <span className="detail-close-hint">再次点击关闭</span>
+            </button>
+          </div>
+        )}
       </section>
 
       {/* 3. Seat ring — 局况 HUD */}
@@ -969,7 +1163,10 @@ export default function PlayShellPage() {
                 }`}
                 disabled={vsBot && isBot}
                 onClick={() => {
-                  if (canSwitchSeat) setActiveSeat(p.id);
+                  if (canSwitchSeat) {
+                    setActiveSeat(p.id);
+                    clearCardSelection();
+                  }
                 }}
               >
                 <div className="seat-chip-head">
@@ -1011,31 +1208,110 @@ export default function PlayShellPage() {
         </div>
       </section>
 
-      {/* 4. Local hand + ops — 仅本座可见内容 */}
-      <section className="local-zone" aria-label="本座区">
+      {/* 4. Local hand + ops — 仅本座可见内容；出牌主路径在手牌 */}
+      <section
+        className="local-zone"
+        aria-label="本座区"
+        onClick={(e) => {
+          if (e.target === e.currentTarget) clearCardSelection();
+        }}
+      >
         <div className="local-hand-block">
-          <h2>本座手牌</h2>
+          <div className="hand-head">
+            <h2>本座手牌</h2>
+            {selectedCardId ? (
+              <button type="button" className="ghost" onClick={clearCardSelection}>
+                取消选择
+              </button>
+            ) : null}
+          </div>
+          {illegalHint ? <p className="hand-hint">{illegalHint}</p> : null}
           {activePlayer.hand.length === 0 ? (
             <p className="muted">空手牌</p>
           ) : (
-            <ul className="hand-fan">
+            <ul className="hand-fan" aria-label="可点选手牌">
               {activePlayer.hand.map((cardId, index) => {
                 const card = getActionCard(cardId);
                 const badge = handCardBadge(cardId);
+                const enabled = enabledPlayActions(legal, cardId);
+                const isLegal = enabled.length > 0 && !opsBlocked && !actionBarLocked;
+                const isSelected = selectedCardId === cardId;
+                const plays = playActionsForCard(legal, cardId);
+                const greyReason =
+                  !isLegal
+                    ? illegalReasonForCard(
+                        legal,
+                        cardId,
+                        state.turnPhase === "execute" &&
+                          currentPlayerId === activeSeat &&
+                          state.eventFlippedThisRound,
+                      )
+                    : undefined;
                 return (
                   <li key={`${cardId}-${index}`}>
-                    <span className={`card-badge ${badge === "I" ? "accent" : ""}`}>
-                      {badge}
-                    </span>
-                    <span className="hand-card-name">{card?.name ?? "未知卡"}</span>
-                    <span className="hand-card-meta">
-                      {card ? `+${card.workHours}h` : "—"}
-                    </span>
+                    <button
+                      type="button"
+                      className={`hand-card ${isLegal ? "legal" : "illegal"} ${
+                        isSelected ? "selected" : ""
+                      }`}
+                      disabled={opsBlocked || actionBarLocked}
+                      title={greyReason}
+                      aria-pressed={isSelected}
+                      aria-disabled={!isLegal}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onHandCardActivate(cardId);
+                      }}
+                      onPointerDown={() => {
+                        if (isLegal || opsBlocked || actionBarLocked) return;
+                        clearIllegalPressTimer();
+                        illegalPressTimer.current = window.setTimeout(() => {
+                          setIllegalHint(
+                            `为何不可：${
+                              greyReason ??
+                              plays.find((p) => p.reason)?.reason ??
+                              "当前不可打出"
+                            }`,
+                          );
+                        }, 420);
+                      }}
+                      onPointerUp={clearIllegalPressTimer}
+                      onPointerLeave={clearIllegalPressTimer}
+                      onPointerCancel={clearIllegalPressTimer}
+                    >
+                      <span className={`card-badge ${badge === "I" ? "accent" : ""}`}>
+                        {badge}
+                      </span>
+                      <span className="hand-card-name">{card?.name ?? "未知卡"}</span>
+                      <span className="hand-card-meta">{handCardCostCopy(cardId)}</span>
+                      <span className="hand-card-effect">{handCardEffectLine(cardId)}</span>
+                    </button>
                   </li>
                 );
               })}
             </ul>
           )}
+          {selectedCardId && selectedPlayOptions.length > 1 ? (
+            <div className="target-row" role="group" aria-label="出牌目标">
+              <span className="target-label">选择目标</span>
+              {selectedPlayOptions.map((item, index) => {
+                if (item.action.type !== "PLAY_CARD") return null;
+                const key = playVariantKey(item.action);
+                return (
+                  <button
+                    key={`var-${key}-${index}`}
+                    type="button"
+                    className={`target-chip ${
+                      selectedVariantKey === key ? "selected" : ""
+                    }`}
+                    onClick={() => setSelectedVariantKey(key)}
+                  >
+                    {compactVariantLabel(item, (id) => seatLabel(state, id))}
+                  </button>
+                );
+              })}
+            </div>
+          ) : null}
         </div>
 
         <div
@@ -1087,10 +1363,27 @@ export default function PlayShellPage() {
 
           <div className="local-actions">
             {error && <p className="error">{error}</p>}
-            <div className="action-list">
-              {legal.map((item, index) => (
+            <div className="action-list action-list-slim">
+              <button
+                type="button"
+                className="primary confirm-play"
+                disabled={
+                  !selectedPlayAction || opsBlocked || actionBarLocked
+                }
+                title={
+                  !selectedCardId
+                    ? "先点选一张可打出的手牌"
+                    : selectedPlayOptions.length > 1 && !selectedVariantKey
+                      ? "请选择目标"
+                      : undefined
+                }
+                onClick={confirmSelectedPlay}
+              >
+                确认打出
+              </button>
+              {barActions.map((item, index) => (
                 <button
-                  key={`${item.label}-${index}`}
+                  key={`${item.action.type}-${index}`}
                   type="button"
                   disabled={!item.enabled || opsBlocked || actionBarLocked}
                   title={
@@ -1098,10 +1391,16 @@ export default function PlayShellPage() {
                       ? "Bot 回合自动中"
                       : item.reason
                   }
-                  className={!item.enabled || actionBarLocked ? "illegal" : undefined}
+                  className={
+                    !item.enabled || actionBarLocked
+                      ? "illegal"
+                      : item.action.type === "USE_BASE_OVERTIME"
+                        ? "primary"
+                        : undefined
+                  }
                   onClick={() => runLegal(item)}
                 >
-                  {item.label}
+                  {barActionLabel(item)}
                   {!item.enabled && item.reason ? ` — ${item.reason}` : ""}
                 </button>
               ))}

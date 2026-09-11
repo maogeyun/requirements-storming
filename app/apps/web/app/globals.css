@@ -377,6 +377,7 @@ button.demo:hover {
 
 /* Stage table */
 .table-center {
+  position: relative;
   border: 2px solid var(--table-border);
   border-radius: 24px;
   background:
@@ -493,6 +494,9 @@ button.demo:hover {
   flex-direction: column;
   gap: 0.4rem;
   position: relative;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
 }
 
 .stage-card.req-face {
@@ -758,6 +762,19 @@ button.demo:hover {
   gap: 0.45rem;
 }
 
+.hand-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.hand-hint {
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--gold);
+}
+
 .local-hand-block h2,
 .local-okr h2 {
   margin: 0;
@@ -771,14 +788,33 @@ button.demo:hover {
   padding: 0.35rem 0.25rem 0.15rem;
   display: flex;
   align-items: flex-end;
-  min-height: 8.5rem;
+  min-height: 9.5rem;
   position: relative;
 }
 
 .hand-fan li {
-  width: 78px;
-  min-height: 108px;
+  width: 86px;
   margin-left: -1.1rem;
+  list-style: none;
+  transform-origin: bottom center;
+}
+
+.hand-fan li:first-child {
+  margin-left: 0;
+}
+
+.hand-fan li:nth-child(odd) .hand-card {
+  transform: rotate(-7deg) translateY(0.35rem);
+}
+
+.hand-fan li:nth-child(even) .hand-card {
+  transform: rotate(3deg) translateY(-0.15rem);
+}
+
+.hand-card {
+  width: 86px;
+  min-height: 118px;
+  margin: 0;
   border: 1px solid var(--card-edge);
   border-radius: 9px;
   padding: 0.5rem;
@@ -786,25 +822,26 @@ button.demo:hover {
   box-shadow: 0 5px 12px rgba(0, 0, 0, 0.4);
   color: var(--card-ink);
   display: grid;
-  gap: 0.25rem;
+  gap: 0.2rem;
   align-content: start;
-  transform-origin: bottom center;
-  transition: transform 0.18s ease, box-shadow 0.18s ease;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    transform 0.18s ease,
+    box-shadow 0.18s ease,
+    border-color 0.18s ease,
+    filter 0.18s ease,
+    opacity 0.18s ease;
 }
 
-.hand-fan li:first-child {
-  margin-left: 0;
+.hand-card.legal {
+  border-color: rgba(61, 220, 151, 0.55);
+  box-shadow:
+    0 5px 12px rgba(0, 0, 0, 0.4),
+    0 0 0 1px rgba(61, 220, 151, 0.2);
 }
 
-.hand-fan li:nth-child(odd) {
-  transform: rotate(-7deg) translateY(0.35rem);
-}
-
-.hand-fan li:nth-child(even) {
-  transform: rotate(3deg) translateY(-0.15rem);
-}
-
-.hand-fan li:hover {
+.hand-card.legal:hover {
   transform: rotate(0deg) translateY(-0.55rem) scale(1.04);
   z-index: 2;
   box-shadow: 0 12px 20px rgba(0, 0, 0, 0.55);
@@ -812,15 +849,83 @@ button.demo:hover {
   border-width: 2px;
 }
 
+.hand-card.selected {
+  z-index: 3;
+  transform: rotate(0deg) translateY(-0.85rem) scale(1.06) !important;
+  border: 2px solid var(--accent);
+  box-shadow:
+    0 14px 24px rgba(0, 0, 0, 0.55),
+    0 0 0 1px rgba(61, 220, 151, 0.35);
+}
+
+.hand-card.illegal {
+  opacity: 0.48;
+  filter: grayscale(0.45);
+  cursor: help;
+}
+
+.hand-card.illegal:hover {
+  transform: rotate(0deg) translateY(-0.2rem);
+  border-color: var(--card-edge);
+}
+
+.hand-card:disabled {
+  cursor: not-allowed;
+}
+
 .hand-card-name {
   font-size: 0.7rem;
   font-weight: 600;
   color: var(--card-ink);
+  line-height: 1.25;
 }
 
 .hand-card-meta {
   font-size: 0.58rem;
   color: var(--card-muted);
+  font-weight: 500;
+}
+
+.hand-card-effect {
+  font-size: 0.52rem;
+  line-height: 1.3;
+  color: var(--card-muted);
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.hand-card.selected .hand-card-effect {
+  -webkit-line-clamp: 4;
+  color: #445466;
+}
+
+.target-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: center;
+}
+
+.target-label {
+  font-size: 0.72rem;
+  color: var(--muted-2);
+}
+
+.target-chip {
+  padding: 0.35rem 0.65rem;
+  font-size: 0.72rem;
+  border-radius: 999px;
+  border: 1px solid var(--btn-secondary-border);
+  background: var(--btn-secondary);
+  color: var(--ink-soft);
+}
+
+.target-chip.selected {
+  border-color: var(--accent);
+  color: var(--ink);
+  box-shadow: 0 0 0 1px rgba(61, 220, 151, 0.28);
 }
 
 .local-ops {
@@ -887,7 +992,12 @@ button.demo:hover {
   gap: 0.5rem;
 }
 
-.action-list button:not(.illegal):not(:disabled):first-of-type {
+.action-list-slim .confirm-play:disabled {
+  opacity: 0.35;
+  filter: none;
+}
+
+.action-list button.primary {
   background: var(--gold);
   border-color: var(--gold);
   color: var(--gold-ink);
@@ -906,6 +1016,121 @@ button.demo:hover {
 
 .forced-actions {
   margin-top: 0.65rem;
+}
+
+.bid-label {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--ink-soft);
+}
+
+.bid-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.bid-pill {
+  min-width: 2.1rem;
+  padding: 0.4rem 0.55rem;
+  border-radius: 999px;
+  border: 1px solid rgba(240, 181, 41, 0.35);
+  background: rgba(240, 181, 41, 0.08);
+  color: var(--gold);
+  font-weight: 600;
+}
+
+.bid-pill.selected {
+  background: var(--gold);
+  border-color: var(--gold);
+  color: var(--gold-ink);
+  box-shadow: 0 0 0 2px rgba(240, 181, 41, 0.25);
+}
+
+.stage-card.event-slot:disabled,
+.stage-card.event-slot.empty {
+  cursor: default;
+}
+
+.stage-card.detail-open {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.stage-card-meta {
+  font-size: 0.62rem;
+  color: var(--card-muted);
+}
+
+.event-slot .stage-card-meta,
+.event-slot .event-name {
+  color: var(--ink-soft);
+}
+
+.event-slot .event-name {
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.muted-slot {
+  color: var(--muted);
+}
+
+.dark-bid-slot.fogged {
+  cursor: default;
+  position: relative;
+}
+
+.dark-bid-slot .fog-copy {
+  font-size: 0.62rem;
+  color: var(--muted);
+  letter-spacing: 0.04em;
+}
+
+.table-detail-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 8;
+  display: grid;
+  place-items: center;
+  background: rgba(4, 12, 20, 0.55);
+  border-radius: 24px;
+  padding: 0.75rem;
+}
+
+.table-detail-card {
+  width: min(260px, 90%);
+  border-radius: 12px;
+  border: 1px solid #cfc6b6;
+  background: var(--card-face);
+  color: var(--card-ink);
+  padding: 0.85rem 0.95rem;
+  display: grid;
+  gap: 0.4rem;
+  text-align: left;
+  box-shadow: var(--shadow-card);
+}
+
+.table-detail-card strong {
+  font-size: 1rem;
+}
+
+.detail-cost {
+  font-size: 0.75rem;
+  color: var(--card-muted);
+  font-weight: 600;
+}
+
+.detail-effect {
+  margin: 0;
+  font-size: 0.78rem;
+  line-height: 1.4;
+  color: #445466;
+}
+
+.detail-close-hint {
+  font-size: 0.65rem;
+  color: var(--muted);
 }
 
 .demo-drawer summary,

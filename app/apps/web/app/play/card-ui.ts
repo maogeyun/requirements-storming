@@ -59,6 +59,23 @@ export function isNonCardBarAction(action: GameAction): boolean {
   }
 }
 
+/** 右下角钉住：投入工时 / 结束回合 — 不抢手牌扇视觉 */
+export function isCornerPinAction(action: GameAction): boolean {
+  switch (action.type) {
+    case "USE_BASE_OVERTIME":
+    case "END_EXECUTE":
+    case "FINISH_END_PHASE":
+      return true;
+    default:
+      return false;
+  }
+}
+
+/** 贴在手牌上方的阶段动作（抽卡 / 翻事件 / 领取工时） */
+export function isPhaseRailAction(action: GameAction): boolean {
+  return isNonCardBarAction(action) && !isCornerPinAction(action);
+}
+
 export function barActionLabel(item: LegalAction): string {
   switch (item.action.type) {
     case "USE_BASE_OVERTIME":

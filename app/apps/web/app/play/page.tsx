@@ -29,7 +29,7 @@ import type {
   OkrEvaluation,
   TurnPhase,
 } from "@rs/shared";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import {
   barActionLabel,
   compactVariantLabel,
@@ -65,9 +65,48 @@ type ForcedWindowKind = "catch_up_dark_bid" | "c14" | "sprint_switch" | null;
 
 type SettlementKind = "cross_line" | "okr_reveal" | "season_end" | null;
 
+type PerfRankRow = {
+  rank: number;
+  playerId: string;
+  displayName: string;
+  performance: number;
+};
+
 function seatLabel(state: GameState, playerId: string | null | undefined): string {
   if (!playerId) return "—";
   return state.players.find((p) => p.id === playerId)?.displayName ?? "—";
+}
+
+/** Public mid-game / endgame ranking by total performance (ties share dense rank). */
+function rankByPerformance(state: GameState): PerfRankRow[] {
+  const sorted = [...state.players].sort((a, b) => b.performance - a.performance);
+  const rows: PerfRankRow[] = [];
+  let lastPerf: number | null = null;
+  let lastRank = 0;
+  sorted.forEach((p, index) => {
+    const rank =
+      lastPerf !== null && p.performance === lastPerf ? lastRank : index + 1;
+    lastRank = rank;
+    lastPerf = p.performance;
+    rows.push({
+      rank,
+      playerId: p.id,
+      displayName: p.displayName,
+      performance: p.performance,
+    });
+  });
+  return rows;
+}
+
+function localRankPerspective(
+  state: GameState,
+  localSeatId: string,
+  ranks: PerfRankRow[],
+): string {
+  if (state.winnerId === localSeatId) return "你赢了";
+  const row = ranks.find((r) => r.playerId === localSeatId);
+  if (!row) return "";
+  return `你第 ${row.rank}`;
 }
 
 /** Visible UI: milestone display name only — never leak internal ids (M1/M2/…). */
@@ -332,6 +371,7 @@ export default function PlayShellPage() {
   const [selectedVariantKey, setSelectedVariantKey] = useState<string | null>(null);
   const [illegalHint, setIllegalHint] = useState<string | null>(null);
   const [tableDetail, setTableDetail] = useState<TableDetailKind>(null);
+  const [perfBarOpen, setPerfBarOpen] = useState(false);
   const phaseBarRef = useRef<HTMLElement | null>(null);
   const botBusyRef = useRef(false);
   const illegalPressTimer = useRef<number | null>(null);
@@ -423,6 +463,15 @@ export default function PlayShellPage() {
     focusPhaseBar();
   }
 
+  function openPerfBar(event?: MouseEvent) {
+    event?.stopPropagation();
+    setPerfBarOpen(true);
+  }
+
+  function closePerfBar() {
+    setPerfBarOpen(false);
+  }
+
   function ackSprintSwitch() {
     if (!state?.sprintSwitchInfo) return;
     setSprintSwitchAckedKey(sprintSwitchKey(state));
@@ -462,6 +511,7 @@ export default function PlayShellPage() {
     setScreen("play");
     setSprintSwitchAckedKey(null);
     setSettlementDismissedKey(null);
+    setPerfBarOpen(false);
     setBotFlash(null);
     clearCardSelection();
     setTableDetail(null);
@@ -718,6 +768,7 @@ export default function PlayShellPage() {
     const draft = cloneState(state);
     const events = setupOkrRevealDemo(draft);
     setSettlementDismissedKey(null);
+    setPerfBarOpen(false);
     commit(draft, events);
   }
 
@@ -827,6 +878,12 @@ export default function PlayShellPage() {
     state.okrRevealed && state.okrSettlements
       ? state.okrSettlements.find((r) => r.playerId === localSeatId)
       : undefined;
+  const perfRanks = rankByPerformance(state);
+  const localPerspective = localRankPerspective(state, localSeatId, perfRanks);
+  const midBoardOpen =
+    settlementOpen &&
+    (settlementKind === "okr_reveal" || settlementKind === "season_end");
+  const crossLineOpen = settlementOpen && settlementKind === "cross_line";
 
   return (
     <main
@@ -836,7 +893,7 @@ export default function PlayShellPage() {
         if (!target) return;
         if (
           target.closest(
-            ".hand-card, .corner-ops, .local-okr-card, .hand-confirm-rail, .forced-window, .settlement-layer, .target-row, .stage-card, .table-detail-layer, .seat-chip, .demo-drawer, .log-drawer, .phase-bar, .hand-head, .opponents-strip",
+            ".hand-card, .corner-ops, .local-okr-card, .hand-confirm-rail, .forced-window, .settlement-layer, .target-row, .stage-card, .table-detail-layer, .seat-chip, .demo-drawer, .log-drawer, .phase-bar, .hand-head, .opponents-strip, .perf-bar-overlay, .mid-ritual-board",
           )
         ) {
           return;
@@ -1051,13 +1108,23 @@ export default function PlayShellPage() {
           const debtPressure = p.personalDebt > 0 || p.personalBugs > 0;
           const canSwitchSeat = !vsBot;
           return (
-            <button
+            <div
               key={p.id}
-              type="button"
-              className={`seat-chip facing ${isTurn ? "turn" : ""} ${isBot ? "bot" : ""}`}
-              disabled={vsBot && isBot}
+              className={`seat-chip facing ${isTurn ? "turn" : ""} ${isBot ? "bot" : ""} ${
+                canSwitchSeat ? "switchable" : ""
+              }`}
+              role={canSwitchSeat ? "button" : "group"}
+              tabIndex={canSwitchSeat ? 0 : undefined}
               onClick={() => {
                 if (canSwitchSeat) {
+                  setActiveSeat(p.id);
+                  clearCardSelection();
+                }
+              }}
+              onKeyDown={(e) => {
+                if (!canSwitchSeat) return;
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
                   setActiveSeat(p.id);
                   clearCardSelection();
                 }
@@ -1068,7 +1135,15 @@ export default function PlayShellPage() {
                 {p.displayName}
                 {isBot ? <span className="bot-tag"> Bot</span> : null}
               </span>
-              <span className="seat-facing-stat">绩 {p.performance}</span>
+              <button
+                type="button"
+                className="seat-facing-stat perf-hit"
+                title="查看绩效条"
+                aria-label={`${p.displayName} 绩效 ${p.performance}，打开绩效条`}
+                onClick={openPerfBar}
+              >
+                绩 {p.performance}
+              </button>
               <span className="seat-facing-stat">手 {p.hand.length}</span>
               <span className={`seat-facing-stat ${debtPressure ? "pressure" : ""}`}>
                 债{p.personalDebt}/Bug{p.personalBugs}
@@ -1077,7 +1152,7 @@ export default function PlayShellPage() {
                 已抽取 · 结算亮牌
               </span>
               {isTurn ? <span className="seat-facing-turn">行动中</span> : null}
-            </button>
+            </div>
           );
         })}
       </section>
@@ -1223,6 +1298,157 @@ export default function PlayShellPage() {
             </button>
           </div>
         )}
+
+        {/* Mid-zone: light 绩效条 — does not cover hand / local OKR */}
+        {perfBarOpen && !midBoardOpen && (
+          <div
+            className="perf-bar-overlay"
+            role="dialog"
+            aria-modal="true"
+            aria-label="绩效条"
+            onClick={closePerfBar}
+          >
+            <div
+              className="perf-bar-panel"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <header className="perf-bar-head">
+                <h2>绩效条</h2>
+                <p className="muted">公开总分 · 跨线/赛季即时更新</p>
+              </header>
+              <div className="perf-bar-table" role="table" aria-label="绩效排名">
+                <div className="perf-bar-row head" role="row">
+                  <span role="columnheader">名次</span>
+                  <span role="columnheader">座位</span>
+                  <span role="columnheader">总分</span>
+                </div>
+                {perfRanks.map((row) => (
+                  <div
+                    key={row.playerId}
+                    className={`perf-bar-row ${
+                      row.playerId === localSeatId ? "local" : ""
+                    }`}
+                    role="row"
+                  >
+                    <span role="cell">{row.rank}</span>
+                    <span role="cell">{row.displayName}</span>
+                    <span role="cell" className="perf-total">
+                      {row.performance}
+                    </span>
+                  </div>
+                ))}
+              </div>
+              <button type="button" className="ghost" onClick={closePerfBar}>
+                关闭
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Mid-zone ritual boards: pre-reveal 候选 (weak) · post-reveal 终局 (authoritative) */}
+        {midBoardOpen && settlementKind === "season_end" && (
+          <div
+            className="mid-ritual-board candidate"
+            role="dialog"
+            aria-modal="true"
+            aria-label="系列 MVP 候选"
+          >
+            <h2>系列 MVP 候选</h2>
+            <p className="muted">隐藏 OKR 尚未亮牌 · 排名仅供参考</p>
+            <div className="ritual-rank-table" role="table" aria-label="候选排名">
+              <div className="ritual-rank-row head" role="row">
+                <span role="columnheader">名次</span>
+                <span role="columnheader">座位</span>
+                <span role="columnheader">总绩效</span>
+              </div>
+              {perfRanks.map((row) => (
+                <div
+                  key={row.playerId}
+                  className={`ritual-rank-row ${
+                    row.playerId === localSeatId ? "local" : ""
+                  }`}
+                  role="row"
+                >
+                  <span role="cell">{row.rank}</span>
+                  <span role="cell">{row.displayName}</span>
+                  <span role="cell">{row.performance}</span>
+                </div>
+              ))}
+            </div>
+            <p className="candidate-lead">
+              当前领先：<strong>{mvpName(state)}</strong>
+            </p>
+            <button type="button" className="ghost" onClick={closeSettlement}>
+              关闭并回到相位条
+            </button>
+          </div>
+        )}
+
+        {midBoardOpen && settlementKind === "okr_reveal" && state.okrSettlements && (
+          <div
+            className="mid-ritual-board final victory"
+            role="dialog"
+            aria-modal="true"
+            aria-label="系列终局板"
+          >
+            <header className="victory-head">
+              <h2>系列终局</h2>
+              {localPerspective ? (
+                <p className="local-perspective">{localPerspective}</p>
+              ) : null}
+              <p className="mvp-banner">
+                系列 MVP · <strong>{mvpName(state)}</strong>
+              </p>
+            </header>
+
+            <div className="ritual-rank-table" role="table" aria-label="最终排名">
+              <div className="ritual-rank-row head" role="row">
+                <span role="columnheader">名次</span>
+                <span role="columnheader">座位</span>
+                <span role="columnheader">总绩效</span>
+              </div>
+              {perfRanks.map((row) => {
+                const isMvp = state.winnerId === row.playerId;
+                return (
+                  <div
+                    key={row.playerId}
+                    className={`ritual-rank-row ${isMvp ? "mvp" : ""} ${
+                      row.playerId === localSeatId ? "local" : ""
+                    }`}
+                    role="row"
+                  >
+                    <span role="cell">{row.rank}</span>
+                    <span role="cell">
+                      {row.displayName}
+                      {isMvp ? (
+                        <span className="mvp-tag"> 系列 MVP</span>
+                      ) : null}
+                    </span>
+                    <span role="cell" className="perf-total">
+                      {row.performance}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="settlement-okr-list ritual-okr-list">
+              {state.okrSettlements.map((row: OkrEvaluation) => (
+                <div key={row.playerId} className="settlement-okr-row">
+                  <strong>{row.displayName}</strong>
+                  <span>{row.name}</span>
+                  <span className={row.achieved ? "okr-ok" : "okr-miss"}>
+                    {row.achieved ? `达成 +${row.reward}` : "未达成"}
+                  </span>
+                </div>
+              ))}
+            </div>
+
+            <button type="button" className="primary" onClick={closeSettlement}>
+              关闭并回到相位条
+            </button>
+          </div>
+        )}
       </section>
 
       {/* 4. Bottom — 左 OKR 竖卡 · 中手牌扇 · 右下仅钉工时/结束 */}
@@ -1273,7 +1499,17 @@ export default function PlayShellPage() {
                 {localPlayer.displayName}
                 <span className="hand-meta-inline">
                   {" "}
-                  · 绩 {localPlayer.performance} · 手 {localPlayer.hand.length} · 债
+                  ·{" "}
+                  <button
+                    type="button"
+                    className="perf-hit inline"
+                    title="查看绩效条"
+                    aria-label={`本座绩效 ${localPlayer.performance}，打开绩效条`}
+                    onClick={openPerfBar}
+                  >
+                    绩 {localPlayer.performance}
+                  </button>{" "}
+                  · 手 {localPlayer.hand.length} · 债
                   {localPlayer.personalDebt}/Bug{localPlayer.personalBugs}
                 </span>
               </h2>
@@ -1445,105 +1681,62 @@ export default function PlayShellPage() {
         </ul>
       </details>
 
-      {/* 5. Settlement layer — 模态浮层 */}
-      {settlementOpen && settlementKind && (
+      {/* 5. Settlement layer — 跨线仍用全屏浮层；终局板在桌心 mid */}
+      {crossLineOpen && (
         <div className="settlement-layer" role="dialog" aria-modal="true" aria-label="结算层">
-          <div
-            className={`settlement-panel ${
-              settlementKind === "okr_reveal"
-                ? "okr-reveal"
-                : settlementKind === "cross_line"
-                  ? "cross-line"
-                  : ""
-            }`}
-          >
-            {settlementKind === "okr_reveal" && state.okrSettlements && (
-              <>
-                <h2>系列结算 · OKR 亮牌</h2>
-                <p>
-                  系列 MVP：<strong>{mvpName(state)}</strong>
-                </p>
-                <div className="settlement-okr-list">
-                  {state.okrSettlements.map((row: OkrEvaluation) => (
-                    <div key={row.playerId} className="settlement-okr-row">
-                      <strong>{row.displayName}</strong>
-                      <span>{row.name}</span>
-                      <span className={row.achieved ? "okr-ok" : "okr-miss"}>
-                        {row.achieved ? `达成 +${row.reward}` : "未达成"}
-                      </span>
-                    </div>
+          <div className="settlement-panel cross-line">
+            <h2>跨线结算</h2>
+            {interaction?.type === "C13_WINDOW" ? (
+              <p>
+                里程碑{" "}
+                <strong>{milestoneName(state, interaction.milestoneId)}</strong>{" "}
+                突破者{" "}
+                <strong>{seatLabel(state, interaction.breakerId)}</strong>
+                。可抢功或弃权；全员弃权后发放绩效。
+                {state.pendingPerformanceSettlementQueue.length > 0
+                  ? ` 另有 ${state.pendingPerformanceSettlementQueue.length} 条跨线排队。`
+                  : ""}
+              </p>
+            ) : state.pendingPerformanceSettlement ? (
+              <p>
+                里程碑{" "}
+                <strong>
+                  {milestoneName(
+                    state,
+                    state.pendingPerformanceSettlement.milestoneId,
+                  )}
+                </strong>{" "}
+                突破者{" "}
+                <strong>
+                  {seatLabel(state, state.pendingPerformanceSettlement.breakerId)}
+                </strong>
+                ；绩效结算挂起中。
+              </p>
+            ) : (
+              <p>跨线绩效排队处理中。</p>
+            )}
+            {interaction?.type === "C13_WINDOW" && (
+              <div className="action-list forced-actions">
+                {legal
+                  .filter(
+                    (item) =>
+                      item.action.type === "RESPOND_C13" ||
+                      item.action.type === "PASS_C13",
+                  )
+                  .map((item, index) => (
+                    <button
+                      key={`c13-${item.label}-${index}`}
+                      type="button"
+                      disabled={!item.enabled}
+                      title={item.reason}
+                      onClick={() => runLegal(item)}
+                    >
+                      {item.label}
+                      {!item.enabled && item.reason ? ` — ${item.reason}` : ""}
+                    </button>
                   ))}
-                </div>
-              </>
+              </div>
             )}
-
-            {settlementKind === "cross_line" && (
-              <>
-                <h2>跨线结算</h2>
-                {interaction?.type === "C13_WINDOW" ? (
-                  <p>
-                    里程碑{" "}
-                    <strong>{milestoneName(state, interaction.milestoneId)}</strong>{" "}
-                    突破者{" "}
-                    <strong>{seatLabel(state, interaction.breakerId)}</strong>
-                    。可抢功或弃权；全员弃权后发放绩效。
-                    {state.pendingPerformanceSettlementQueue.length > 0
-                      ? ` 另有 ${state.pendingPerformanceSettlementQueue.length} 条跨线排队。`
-                      : ""}
-                  </p>
-                ) : state.pendingPerformanceSettlement ? (
-                  <p>
-                    里程碑{" "}
-                    <strong>
-                      {milestoneName(
-                        state,
-                        state.pendingPerformanceSettlement.milestoneId,
-                      )}
-                    </strong>{" "}
-                    突破者{" "}
-                    <strong>
-                      {seatLabel(state, state.pendingPerformanceSettlement.breakerId)}
-                    </strong>
-                    ；绩效结算挂起中。
-                  </p>
-                ) : (
-                  <p>跨线绩效排队处理中。</p>
-                )}
-                {interaction?.type === "C13_WINDOW" && (
-                  <div className="action-list forced-actions">
-                    {legal
-                      .filter(
-                        (item) =>
-                          item.action.type === "RESPOND_C13" ||
-                          item.action.type === "PASS_C13",
-                      )
-                      .map((item, index) => (
-                        <button
-                          key={`c13-${item.label}-${index}`}
-                          type="button"
-                          disabled={!item.enabled}
-                          title={item.reason}
-                          onClick={() => runLegal(item)}
-                        >
-                          {item.label}
-                          {!item.enabled && item.reason ? ` — ${item.reason}` : ""}
-                        </button>
-                      ))}
-                  </div>
-                )}
-              </>
-            )}
-
-            {settlementKind === "season_end" && (
-              <>
-                <h2>赛季 / 系列终局</h2>
-                <p>
-                  系列 MVP 候选：<strong>{mvpName(state)}</strong>
-                  。隐藏 OKR 尚未亮牌。
-                </p>
-              </>
-            )}
-
             <button type="button" className="primary" onClick={closeSettlement}>
               关闭并回到相位条
             </button>

@@ -705,6 +705,47 @@ button.demo:hover {
   max-width: 100%;
 }
 
+.seat-chip.facing.switchable {
+  cursor: pointer;
+}
+
+.seat-chip.facing.bot:not(.switchable) {
+  cursor: default;
+}
+
+.seat-facing-stat.perf-hit,
+.perf-hit.inline {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--gold);
+  font: inherit;
+  font-size: 0.62rem;
+  font-weight: 600;
+  padding: 0;
+  margin: 0;
+  cursor: pointer;
+  white-space: nowrap;
+  text-decoration: underline;
+  text-decoration-color: rgba(240, 181, 41, 0.35);
+  text-underline-offset: 0.12em;
+}
+
+.seat-facing-stat.perf-hit:hover,
+.perf-hit.inline:hover,
+.seat-facing-stat.perf-hit:focus-visible,
+.perf-hit.inline:focus-visible {
+  color: var(--ink);
+  text-decoration-color: var(--gold);
+  outline: none;
+}
+
+.perf-hit.inline {
+  font-size: inherit;
+  font-weight: 600;
+  color: var(--gold);
+}
+
 .seat-chip.facing.bot {
   opacity: 0.92;
 }
@@ -1303,25 +1344,6 @@ button.demo:hover {
   color: var(--gold);
 }
 
-.settlement-panel.okr-reveal {
-  overflow: hidden;
-}
-
-.settlement-panel.okr-reveal::before {
-  content: "翻开中";
-  position: absolute;
-  right: 1rem;
-  top: 1rem;
-  font-size: 0.7rem;
-  letter-spacing: 0.12em;
-  color: var(--accent);
-  animation: reveal-blink 1.1s ease-in-out infinite;
-}
-
-.settlement-panel.okr-reveal {
-  position: relative;
-}
-
 .settlement-okr-list {
   display: grid;
   gap: 0.45rem;
@@ -1354,6 +1376,183 @@ button.demo:hover {
 
 .settlement-okr-row:nth-child(5) {
   animation-delay: 0.32s;
+}
+
+/* Mid-zone 绩效条 — light overlay on battlefield only */
+.perf-bar-overlay {
+  position: absolute;
+  inset: 0.55rem;
+  z-index: 12;
+  display: grid;
+  place-items: center;
+  border-radius: 22px;
+  background: rgba(6, 16, 24, 0.42);
+  backdrop-filter: blur(1.5px);
+  animation: settle-in 0.2s ease-out;
+}
+
+.perf-bar-panel {
+  width: min(340px, 92%);
+  display: grid;
+  gap: 0.55rem;
+  padding: 0.85rem 0.95rem;
+  border-radius: 12px;
+  border: 1px solid rgba(240, 181, 41, 0.45);
+  background: rgba(14, 32, 48, 0.94);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.35);
+  color: var(--ink);
+}
+
+.perf-bar-head {
+  display: grid;
+  gap: 0.15rem;
+}
+
+.perf-bar-head h2 {
+  margin: 0;
+  font-size: 0.95rem;
+  color: var(--gold);
+  letter-spacing: 0.04em;
+}
+
+.perf-bar-head .muted {
+  margin: 0;
+  font-size: 0.68rem;
+}
+
+.perf-bar-table,
+.ritual-rank-table {
+  display: grid;
+  gap: 0.28rem;
+}
+
+.perf-bar-row,
+.ritual-rank-row {
+  display: grid;
+  grid-template-columns: 2.4rem 1fr 3.2rem;
+  gap: 0.4rem;
+  align-items: center;
+  padding: 0.35rem 0.45rem;
+  border-radius: 8px;
+  font-size: 0.78rem;
+  background: rgba(8, 18, 30, 0.45);
+}
+
+.perf-bar-row.head,
+.ritual-rank-row.head {
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.66rem;
+  letter-spacing: 0.04em;
+  padding-bottom: 0.1rem;
+}
+
+.perf-bar-row.local,
+.ritual-rank-row.local {
+  outline: 1px solid rgba(61, 220, 151, 0.35);
+}
+
+.perf-total {
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  text-align: right;
+  color: var(--gold);
+}
+
+/* Mid-zone ritual boards (candidate weak / final authoritative) */
+.mid-ritual-board {
+  position: absolute;
+  inset: 0.45rem;
+  z-index: 14;
+  display: grid;
+  gap: 0.65rem;
+  align-content: start;
+  justify-items: stretch;
+  overflow: auto;
+  padding: 0.95rem 1rem 1.05rem;
+  border-radius: 22px;
+  animation: settle-in 0.28s ease-out;
+  color: var(--ink);
+}
+
+.mid-ritual-board.candidate {
+  background: rgba(10, 22, 34, 0.72);
+  border: 1px dashed rgba(240, 181, 41, 0.28);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.03);
+}
+
+.mid-ritual-board.candidate h2 {
+  margin: 0;
+  font-size: 0.95rem;
+  color: var(--muted-2);
+  font-weight: 600;
+}
+
+.mid-ritual-board.candidate .muted {
+  margin: 0;
+  font-size: 0.7rem;
+}
+
+.mid-ritual-board.candidate .candidate-lead {
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--ink-soft);
+}
+
+.mid-ritual-board.final {
+  background:
+    radial-gradient(ellipse at 50% 0%, rgba(240, 181, 41, 0.16), transparent 55%),
+    rgba(10, 24, 38, 0.96);
+  border: 1px solid rgba(240, 181, 41, 0.7);
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.45);
+}
+
+.mid-ritual-board.final h2 {
+  margin: 0;
+  color: var(--gold);
+  font-size: 1.05rem;
+}
+
+.victory-head {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.local-perspective {
+  margin: 0;
+  font-size: 1.15rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--accent);
+}
+
+.mvp-banner {
+  margin: 0;
+  font-size: 0.88rem;
+  color: var(--ink-soft);
+}
+
+.ritual-rank-row.mvp {
+  background: rgba(240, 181, 41, 0.14);
+  border: 1px solid rgba(240, 181, 41, 0.45);
+}
+
+.mvp-tag {
+  margin-left: 0.35rem;
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--gold);
+  white-space: nowrap;
+}
+
+.ritual-okr-list {
+  margin-top: 0.15rem;
+}
+
+.mid-ritual-board .settlement-okr-row {
+  font-size: 0.8rem;
+  padding: 0.4rem 0.5rem;
 }
 
 @keyframes tension-pulse {

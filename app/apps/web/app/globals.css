@@ -62,7 +62,6 @@ body {
 .hero h1,
 .setup h2,
 .forced-window h2,
-.local-okr h2,
 .local-okr-card .okr-name,
 .settlement-panel h2 {
   font-family: "ZCOOL XiaoWei", serif;
@@ -1063,10 +1062,9 @@ button.demo:hover {
   font-size: 0.68rem;
   line-height: 1.35;
   color: var(--muted-2);
-  display: -webkit-box;
-  -webkit-line-clamp: 3;
-  -webkit-box-orient: vertical;
+  white-space: nowrap;
   overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .local-okr-card .okr-reward {

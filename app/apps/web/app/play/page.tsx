@@ -138,7 +138,7 @@ function detectForcedWindow(
   if (interaction?.type === "C14") return "c14";
 
   const pending = state.pendingDarkBid;
-  if (pending && !pending.resolved && pending.isCatchUp) {
+  if (pending && !pending.resolved) {
     return "catch_up_dark_bid";
   }
 
@@ -239,7 +239,7 @@ function forcedWindowPreview(
   forced: ForcedWindowKind,
 ): string | null {
   if (forced === "c14") return "下一强制窗：C-14 响应";
-  if (forced === "catch_up_dark_bid") return "下一强制窗：跨线补开暗标";
+  if (forced === "catch_up_dark_bid") return "下一强制窗：暗标（必须出价）";
   if (forced === "sprint_switch") return "下一强制窗：Sprint 切换";
   if (state.pendingDarkBid && !state.pendingDarkBid.resolved && !state.pendingDarkBid.isCatchUp) {
     return "预告：暗标冲刺进行中";
@@ -923,12 +923,14 @@ export default function PlayShellPage() {
           <section
             className="forced-window catch-up"
             role="alertdialog"
-            aria-label="跨线补开暗标"
+            aria-label={pending.isCatchUp ? "跨线补开暗标" : "冲刺区暗标"}
           >
-            <h2>必须补开，不能跳过</h2>
+            <h2>{pending.isCatchUp ? "必须补开，不能跳过" : "暗标进行中，不能跳过"}</h2>
             <p>
               里程碑 <strong>{milestoneName(state, pending.milestoneId)}</strong>
-              ：未进冲刺区却将跨线，结算前强制补开暗标。
+              {pending.isCatchUp
+                ? "：未进冲刺区却将跨线，结算前强制补开暗标。"
+                : "：冲刺区暗标，全员出价后继续。"}
             </p>
             {state.pendingProgressSettlement && (
               <p className="warn">

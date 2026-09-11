@@ -808,7 +808,6 @@ export default function PlayShellPage() {
   const activePlayer = state.players.find((p) => p.id === activeSeat)!;
   const darkBidZone = darkBidZoneCopy(state);
   const preview = forcedWindowPreview(state, forced);
-  const selfOkr = activePlayer.okrId ? getOkrCard(activePlayer.okrId) : undefined;
   const progressPct = Math.min(
     100,
     Math.round((state.progress / Math.max(1, state.totalProgressTarget)) * 100),
@@ -823,6 +822,11 @@ export default function PlayShellPage() {
   const localSeatId = vsBot ? humanSeat : activeSeat;
   const opponents = state.players.filter((p) => p.id !== localSeatId);
   const localPlayer = state.players.find((p) => p.id === localSeatId) ?? activePlayer;
+  const selfOkr = localPlayer.okrId ? getOkrCard(localPlayer.okrId) : undefined;
+  const selfOkrSettlement =
+    state.okrRevealed && state.okrSettlements
+      ? state.okrSettlements.find((r) => r.playerId === localSeatId)
+      : undefined;
 
   return (
     <main
@@ -832,7 +836,7 @@ export default function PlayShellPage() {
         if (!target) return;
         if (
           target.closest(
-            ".hand-card, .corner-ops, .hand-confirm-rail, .forced-window, .settlement-layer, .target-row, .stage-card, .table-detail-layer, .seat-chip, .demo-drawer, .log-drawer, .phase-bar, .hand-head, .opponents-strip",
+            ".hand-card, .corner-ops, .local-okr-card, .hand-confirm-rail, .forced-window, .settlement-layer, .target-row, .stage-card, .table-detail-layer, .seat-chip, .demo-drawer, .log-drawer, .phase-bar, .hand-head, .opponents-strip",
           )
         ) {
           return;
@@ -1069,6 +1073,9 @@ export default function PlayShellPage() {
               <span className={`seat-facing-stat ${debtPressure ? "pressure" : ""}`}>
                 债{p.personalDebt}/Bug{p.personalBugs}
               </span>
+              <span className="seat-facing-okr" title="他座 OKR 不可窥">
+                已抽取 · 结算亮牌
+              </span>
               {isTurn ? <span className="seat-facing-turn">行动中</span> : null}
             </button>
           );
@@ -1218,7 +1225,7 @@ export default function PlayShellPage() {
         )}
       </section>
 
-      {/* 4. Bottom — 本座手牌扇为主视觉；确认打出贴手牌上沿；右下仅钉工时/结束 */}
+      {/* 4. Bottom — 左 OKR 竖卡 · 中手牌扇 · 右下仅钉工时/结束 */}
       <section
         className={`local-zone ${opsBlocked ? "covered" : ""} ${
           actionBarLocked ? "bot-locked" : ""
@@ -1233,6 +1240,31 @@ export default function PlayShellPage() {
             <span>强制窗进行中 · 完成本座强制响应后继续</span>
           </div>
         )}
+
+        <aside
+          className={`local-okr-card ${selfOkrSettlement ? "revealed" : "hidden-self"}`}
+          aria-label="本座 OKR"
+        >
+          <span className="okr-kicker">本座 OKR</span>
+          <strong className="okr-name">
+            {selfOkrSettlement?.name ?? selfOkr?.name ?? "未抽取"}
+          </strong>
+          <p className="okr-cond">
+            {selfOkrSettlement?.conditionText ??
+              selfOkr?.conditionText ??
+              "开局暗抽，总结算亮牌"}
+          </p>
+          <p className="okr-reward">
+            奖励 +{selfOkr?.reward ?? selfOkrSettlement?.reward ?? "—"}
+          </p>
+          {selfOkrSettlement ? (
+            <p className={selfOkrSettlement.achieved ? "okr-ok" : "okr-miss"}>
+              {selfOkrSettlement.achieved
+                ? `达成 +${selfOkrSettlement.reward}`
+                : "未达成"}
+            </p>
+          ) : null}
+        </aside>
 
         <div className="local-hand-block">
           <div className="hand-confirm-rail">
@@ -1380,23 +1412,6 @@ export default function PlayShellPage() {
           aria-label="本座钉住操作"
           aria-disabled={opsBlocked || actionBarLocked}
         >
-          <div className="local-okr compact">
-            <span className="okr-kicker">本座 OKR</span>
-            {state.okrRevealed && state.okrSettlements ? (
-              (() => {
-                const row = state.okrSettlements.find((r) => r.playerId === localSeatId);
-                return (
-                  <p className="okr-title-line">
-                    {row
-                      ? `${row.name} · ${row.achieved ? `达成 +${row.reward}` : "未达成"}`
-                      : "—"}
-                  </p>
-                );
-              })()
-            ) : (
-              <p className="okr-title-line">{selfOkr?.name ?? "未抽取"}</p>
-            )}
-          </div>
           <div className="corner-pin-actions">
             {cornerPinActions.map((item, index) => (
               <button

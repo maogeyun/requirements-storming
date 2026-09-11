@@ -62,7 +62,6 @@ body {
 .hero h1,
 .setup h2,
 .forced-window h2,
-.local-ops h2,
 .local-okr h2,
 .settlement-panel h2 {
   font-family: "ZCOOL XiaoWei", serif;
@@ -243,14 +242,23 @@ button.demo:hover {
   color: var(--danger);
 }
 
-/* ——— Table shell · Busy 64:2 ——— */
+/* ——— Table shell · Hearthstone-class card table (zones only; no IP art) ——— */
 
 .table-shell {
-  max-width: 1080px;
+  max-width: 1200px;
   margin: 0 auto;
-  padding: 0.65rem 1rem 2.5rem;
+  padding: 0.4rem 0.85rem 1.5rem;
   display: grid;
-  gap: 0.85rem;
+  gap: 0.55rem;
+  min-height: 100vh;
+  grid-template-rows: auto auto minmax(14rem, 1fr) auto auto;
+  align-content: stretch;
+}
+
+.table-shell.card-table {
+  background:
+    radial-gradient(ellipse at 50% 42%, rgba(30, 90, 70, 0.22), transparent 58%),
+    transparent;
 }
 
 .phase-bar {
@@ -261,50 +269,57 @@ button.demo:hover {
   border-radius: 0;
   background: rgba(10, 22, 40, 0.94);
   backdrop-filter: blur(10px);
-  padding: 0.7rem 1.1rem 0.75rem;
+  padding: 0;
   outline: none;
-  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.28);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.28);
 }
 
 .phase-bar.busy {
   border-bottom: 1px solid rgba(232, 92, 92, 0.55);
   box-shadow:
-    0 8px 20px rgba(0, 0, 0, 0.28),
+    0 6px 16px rgba(0, 0, 0, 0.28),
     inset 0 -1px 0 rgba(232, 92, 92, 0.35);
 }
 
 .phase-bar-main {
   display: flex;
-  flex-wrap: wrap;
-  gap: 0.75rem;
+  flex-wrap: nowrap;
+  gap: 0.55rem;
   align-items: center;
   justify-content: space-between;
+  height: 40px;
+  max-height: 40px;
+  padding: 0 0.75rem;
+  overflow: visible;
 }
 
 .phase-bar-title strong {
   color: var(--gold);
-  font-size: 1rem;
+  font-size: 0.92rem;
   font-weight: 700;
   letter-spacing: 0.01em;
+  white-space: nowrap;
 }
 
 .phase-steps {
   display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
+  flex-wrap: nowrap;
+  gap: 0.35rem;
   flex: 1;
-  max-width: 22rem;
+  max-width: 18rem;
+  min-width: 0;
 }
 
 .phase {
   text-align: center;
-  padding: 0.38rem 0.75rem;
+  padding: 0.2rem 0.55rem;
   border-radius: 999px;
   background: var(--phase-pill);
   color: var(--muted-2);
-  font-size: 0.75rem;
+  font-size: 0.7rem;
   font-weight: 500;
   border-bottom: none;
+  white-space: nowrap;
 }
 
 .phase.active {
@@ -315,25 +330,85 @@ button.demo:hover {
 
 .phase-bar-status {
   display: flex;
-  flex-wrap: wrap;
-  gap: 0.75rem;
-  margin-top: 0.45rem;
-  font-size: 0.78rem;
+  flex-wrap: nowrap;
+  gap: 0.45rem;
+  margin-top: 0;
+  font-size: 0.72rem;
   color: var(--ink-soft);
   justify-content: flex-end;
+  align-items: center;
+  min-width: 0;
+}
+
+.phase-now {
+  color: var(--gold);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.phase-hud {
+  color: var(--accent);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 9rem;
 }
 
 .phase-preview {
   color: var(--gold);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 11rem;
+}
+
+.phase-demo-fold {
+  position: relative;
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+
+.phase-demo-fold summary {
+  cursor: pointer;
+  list-style: none;
+  white-space: nowrap;
+  padding: 0.15rem 0.35rem;
+}
+
+.phase-demo-fold summary::-webkit-details-marker {
+  display: none;
+}
+
+.phase-demo-fold[open] > .demo-row {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 0.35rem);
+  z-index: 40;
+  min-width: 12rem;
+  padding: 0.55rem 0.7rem;
+  border-radius: 10px;
+  border: 1px solid var(--seat-border);
+  background: rgba(10, 22, 40, 0.96);
+  box-shadow: var(--shadow-deep);
+  display: grid;
+  gap: 0.35rem;
+  margin: 0;
+}
+
+.phase-back {
+  flex-shrink: 0;
+  font-size: 0.72rem;
 }
 
 /* Forced windows — ceremony emotion colors */
 .forced-window {
-  margin-top: 0.75rem;
+  margin: 0;
   border: 1.5px solid var(--danger);
+  border-left: none;
+  border-right: none;
   background: var(--danger-soft);
-  border-radius: 12px;
-  padding: 0.9rem 1rem;
+  border-radius: 0;
+  padding: 0.85rem 1rem;
   animation: tension-pulse 1.5s ease-in-out infinite;
 }
 
@@ -375,20 +450,22 @@ button.demo:hover {
   margin-top: 0.75rem;
 }
 
-/* Stage table */
+/* Stage table — center battlefield */
 .table-center {
   position: relative;
   border: 2px solid var(--table-border);
-  border-radius: 24px;
+  border-radius: 28px;
   background:
-    radial-gradient(ellipse at 50% 20%, rgba(61, 220, 151, 0.08), transparent 55%),
+    radial-gradient(ellipse at 50% 18%, rgba(61, 220, 151, 0.1), transparent 55%),
+    radial-gradient(ellipse at 50% 100%, rgba(14, 42, 36, 0.9), transparent 60%),
     var(--table);
-  padding: 1rem 1.15rem 1.2rem;
+  padding: 1.15rem 1.25rem 1.35rem;
   display: grid;
-  gap: 0.85rem;
-  min-height: 12rem;
+  gap: 1rem;
+  min-height: 16rem;
   box-shadow: var(--shadow-deep);
   justify-items: center;
+  align-content: center;
 }
 
 .series-line {
@@ -401,7 +478,7 @@ button.demo:hover {
 .progress-block {
   display: grid;
   gap: 0.35rem;
-  width: min(100%, 470px);
+  width: min(100%, 560px);
 }
 
 .progress-meta {
@@ -479,20 +556,21 @@ button.demo:hover {
 .table-slots {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.85rem;
+  gap: 1.15rem;
   justify-content: center;
   width: 100%;
+  align-items: stretch;
 }
 
 .stage-card {
-  width: 130px;
-  min-height: 170px;
-  border-radius: 12px;
-  padding: 0.65rem 0.7rem;
+  width: 158px;
+  min-height: 210px;
+  border-radius: 14px;
+  padding: 0.75rem 0.8rem;
   box-shadow: var(--shadow-card);
   display: flex;
   flex-direction: column;
-  gap: 0.4rem;
+  gap: 0.45rem;
   position: relative;
   cursor: pointer;
   font: inherit;
@@ -537,7 +615,14 @@ button.demo:hover {
 }
 
 .stage-card.dark-bid-slot.collapsed {
-  opacity: 0.72;
+  opacity: 0.85;
+  cursor: default;
+}
+
+.stage-card.dark-bid-slot.collapsed .status-copy {
+  color: var(--muted-2);
+  font-size: 0.85rem;
+  font-weight: 600;
 }
 
 .card-badge {
@@ -570,11 +655,11 @@ button.demo:hover {
 
 .stage-card.req-face strong {
   color: var(--card-ink);
-  font-size: 0.9rem;
+  font-size: 1rem;
 }
 
 .dark-bid-mark {
-  font-size: 1.15rem;
+  font-size: 1.35rem;
   font-weight: 700;
   color: var(--gold);
   margin: 0;
@@ -596,61 +681,62 @@ button.demo:hover {
   color: var(--gold);
 }
 
-/* Seat ring HUD */
-.seat-ring {
-  padding: 0.15rem 0;
+/* Opponents strip — facing chips (no big form cards) */
+.opponents-strip {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.45rem;
+  padding: 0.1rem 0;
 }
 
-.seat-ring-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(168px, 1fr));
-  gap: 0.65rem;
-}
-
-.seat-chip {
-  text-align: left;
-  display: grid;
-  gap: 0.4rem;
-  padding: 0.65rem 0.75rem;
+.seat-chip.facing {
+  display: inline-flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.35rem 0.65rem;
+  border-radius: 999px;
   background: var(--seat-bg);
   border: 1px solid var(--seat-border);
-  border-radius: 12px;
-  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.35);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
   color: var(--ink);
+  text-align: left;
+  max-width: 100%;
 }
 
-.seat-chip.own {
-  border-width: 2px;
-  border-color: var(--accent);
-  box-shadow:
-    0 4px 10px rgba(0, 0, 0, 0.35),
-    0 0 18px 2px var(--accent-glow);
-}
-
-.seat-chip.bot {
-  border-color: var(--seat-border);
+.seat-chip.facing.bot {
   opacity: 0.92;
 }
 
-.seat-chip.bot.turn {
-  border-width: 2px;
+.seat-chip.facing.turn {
   border-color: var(--gold);
   box-shadow:
-    0 4px 10px rgba(0, 0, 0, 0.3),
-    0 0 14px 1px var(--gold-glow);
-  opacity: 1;
+    0 2px 8px rgba(0, 0, 0, 0.3),
+    0 0 12px 1px var(--gold-glow);
 }
 
-.seat-chip.turn:not(.own):not(.bot) {
-  border-width: 2px;
-  border-color: var(--gold);
-  box-shadow:
-    0 4px 10px rgba(0, 0, 0, 0.3),
-    0 0 14px 1px var(--gold-glow);
+.seat-facing-name {
+  font-size: 0.72rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.seat-facing-stat {
+  font-size: 0.62rem;
+  color: var(--ink-soft);
+  white-space: nowrap;
+}
+
+.seat-facing-turn {
+  font-size: 0.58rem;
+  color: var(--gold);
+  font-weight: 600;
+  white-space: nowrap;
 }
 
 .bot-tag {
-  font-size: 0.62rem;
+  font-size: 0.58rem;
   font-weight: 600;
   color: var(--muted-2);
   letter-spacing: 0.02em;
@@ -672,94 +758,50 @@ button.demo:hover {
   pointer-events: none;
 }
 
-.local-ops.bot-locked {
-  opacity: 0.55;
-  filter: grayscale(0.2);
-}
-
-.local-ops.bot-locked .action-list button {
-  pointer-events: none;
-}
-
-.seat-chip-head {
-  display: flex;
-  gap: 0.5rem;
-  align-items: center;
-}
-
 .seat-color {
-  width: 10px;
-  height: 10px;
+  width: 8px;
+  height: 8px;
   border-radius: 50%;
   flex-shrink: 0;
   background: var(--muted);
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.15);
 }
 
-.seat-chip.own .seat-color {
-  background: var(--accent);
-}
-
-.seat-chip.turn:not(.own) .seat-color {
+.seat-chip.facing.turn .seat-color {
   background: var(--gold);
 }
 
-.seat-titles {
-  display: grid;
-  gap: 0.1rem;
-  min-width: 0;
-}
-
-.seat-titles strong {
-  font-size: 0.75rem;
-  font-weight: 600;
-  color: var(--ink);
-}
-
-.seat-status {
-  font-size: 0.62rem;
-  color: var(--muted);
-}
-
-.seat-chip.own .seat-status {
-  color: var(--accent);
-  font-weight: 500;
-}
-
-.seat-chip.turn:not(.own) .seat-status {
-  color: var(--gold);
-  font-weight: 500;
-}
-
-.seat-stats {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.35rem 0.65rem;
-  font-size: 0.7rem;
-  color: var(--ink-soft);
-  font-weight: 500;
-}
-
-.seat-okr {
-  font-size: 0.7rem;
-}
-
-.seat-okr .locked {
-  color: var(--muted);
-  font-style: italic;
-}
-
-/* Local zone: hand fan + ops */
+/* Local zone: hand fan primary + corner pins */
 .local-zone {
+  position: relative;
   display: grid;
-  grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
-  gap: 0.85rem;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.65rem;
   align-items: end;
+}
+
+.local-zone.bot-locked {
+  opacity: 0.7;
+}
+
+.local-zone.bot-locked .hand-rail-actions button,
+.local-zone.bot-locked .corner-pin-actions button {
+  pointer-events: none;
+}
+
+.local-zone.covered {
+  min-height: 10rem;
 }
 
 .local-hand-block {
   display: grid;
-  gap: 0.45rem;
+  gap: 0.4rem;
+  min-width: 0;
+}
+
+.hand-confirm-rail {
+  display: grid;
+  gap: 0.35rem;
 }
 
 .hand-head {
@@ -769,10 +811,20 @@ button.demo:hover {
   gap: 0.75rem;
 }
 
+.hand-meta-inline {
+  font-size: 0.68rem;
+  font-weight: 500;
+  color: var(--muted-2);
+}
+
 .hand-hint {
   margin: 0;
   font-size: 0.78rem;
   color: var(--gold);
+}
+
+.hand-empty {
+  margin: 0.5rem 0;
 }
 
 .local-hand-block h2,
@@ -782,19 +834,32 @@ button.demo:hover {
   color: var(--ink-soft);
 }
 
+.hand-rail-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: center;
+}
+
+.hand-rail-actions .confirm-play:disabled {
+  opacity: 0.35;
+  filter: none;
+}
+
 .hand-fan {
   list-style: none;
   margin: 0;
-  padding: 0.35rem 0.25rem 0.15rem;
+  padding: 0.55rem 0.25rem 0.2rem;
   display: flex;
   align-items: flex-end;
-  min-height: 9.5rem;
+  justify-content: center;
+  min-height: 10.5rem;
   position: relative;
 }
 
 .hand-fan li {
-  width: 86px;
-  margin-left: -1.1rem;
+  width: 92px;
+  margin-left: -1.25rem;
   list-style: none;
   transform-origin: bottom center;
 }
@@ -812,8 +877,8 @@ button.demo:hover {
 }
 
 .hand-card {
-  width: 86px;
-  min-height: 118px;
+  width: 92px;
+  min-height: 124px;
   margin: 0;
   border: 1px solid var(--card-edge);
   border-radius: 9px;
@@ -822,7 +887,7 @@ button.demo:hover {
   box-shadow: 0 5px 12px rgba(0, 0, 0, 0.4);
   color: var(--card-ink);
   display: grid;
-  gap: 0.2rem;
+  gap: 0.18rem;
   align-content: start;
   text-align: left;
   cursor: pointer;
@@ -878,6 +943,9 @@ button.demo:hover {
   font-weight: 600;
   color: var(--card-ink);
   line-height: 1.25;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .hand-card-meta {
@@ -886,18 +954,18 @@ button.demo:hover {
   font-weight: 500;
 }
 
+/* Effect copy: exactly 1 line — no multi-line clamp feel */
 .hand-card-effect {
   font-size: 0.52rem;
-  line-height: 1.3;
+  line-height: 1.2;
   color: var(--card-muted);
-  display: -webkit-box;
-  -webkit-line-clamp: 3;
-  -webkit-box-orient: vertical;
+  display: block;
+  white-space: nowrap;
   overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .hand-card.selected .hand-card-effect {
-  -webkit-line-clamp: 4;
   color: #445466;
 }
 
@@ -928,19 +996,41 @@ button.demo:hover {
   box-shadow: 0 0 0 1px rgba(61, 220, 151, 0.28);
 }
 
-.local-ops {
-  position: relative;
-  border: 1px solid var(--ops-border);
-  border-radius: 14px;
-  padding: 0.75rem 1rem 0.9rem;
-  background: var(--ops-bg);
+.corner-ops {
   display: grid;
-  gap: 0.7rem;
-  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.45);
+  gap: 0.55rem;
+  align-content: end;
+  justify-items: stretch;
+  min-width: 7.5rem;
+  max-width: 9.5rem;
+  padding: 0.55rem 0.65rem;
+  border: 1px solid var(--ops-border);
+  border-radius: 12px;
+  background: var(--ops-bg);
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.4);
 }
 
-.local-ops.covered {
-  min-height: 8rem;
+.local-okr.compact {
+  display: grid;
+  gap: 0.15rem;
+}
+
+.okr-kicker {
+  font-size: 0.58rem;
+  color: var(--muted);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.corner-pin-actions {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.corner-pin-actions button {
+  width: 100%;
+  padding: 0.55rem 0.65rem;
+  font-size: 0.78rem;
 }
 
 .ops-cover {
@@ -958,21 +1048,8 @@ button.demo:hover {
   padding: 1rem;
 }
 
-.ops-meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.75rem 1rem;
-  font-size: 0.78rem;
-}
-
-.ops-meta .phase-copy {
-  color: var(--gold);
-  font-weight: 600;
-}
-
-.ops-meta .turn-copy {
-  color: var(--accent);
-  font-weight: 500;
+.ops-cover.local-cover {
+  border-radius: 12px;
 }
 
 .local-okr {
@@ -983,18 +1060,14 @@ button.demo:hover {
 .okr-title-line {
   margin: 0;
   font-weight: 600;
-  font-size: 0.9rem;
+  font-size: 0.82rem;
+  line-height: 1.25;
 }
 
 .action-list {
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
-}
-
-.action-list-slim .confirm-play:disabled {
-  opacity: 0.35;
-  filter: none;
 }
 
 .action-list button.primary {
@@ -1004,7 +1077,6 @@ button.demo:hover {
   font-weight: 700;
 }
 
-.demo-drawer,
 .log-drawer {
   border: 1px solid rgba(47, 74, 102, 0.55);
   border-radius: 10px;
@@ -1133,7 +1205,6 @@ button.demo:hover {
   color: var(--muted);
 }
 
-.demo-drawer summary,
 .log-drawer summary {
   cursor: pointer;
   color: var(--muted);
@@ -1296,15 +1367,45 @@ button.demo:hover {
     grid-template-columns: 1fr;
   }
 
+  .corner-ops {
+    max-width: none;
+    width: 100%;
+    grid-template-columns: 1fr auto;
+    align-items: center;
+  }
+
+  .corner-pin-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+  }
+
+  .corner-pin-actions button {
+    width: auto;
+  }
+
   .hand-fan {
     justify-content: center;
+  }
+
+  .phase-bar-main {
+    gap: 0.35rem;
+    padding: 0 0.5rem;
+  }
+
+  .phase-hud,
+  .phase-preview {
+    max-width: 6.5rem;
   }
 }
 
 @media (max-width: 720px) {
   .phase-steps {
-    max-width: none;
-    width: 100%;
+    max-width: 11rem;
+  }
+
+  .phase-bar-title {
+    display: none;
   }
 
   .settlement-okr-row {
@@ -1316,7 +1417,16 @@ button.demo:hover {
   }
 
   .stage-card {
-    width: min(130px, 42vw);
-    min-height: 150px;
+    width: min(148px, 44vw);
+    min-height: 190px;
+  }
+
+  .opponents-strip {
+    gap: 0.3rem;
+  }
+
+  .seat-chip.facing {
+    padding: 0.3rem 0.5rem;
+    gap: 0.3rem;
   }
 }

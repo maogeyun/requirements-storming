@@ -38,7 +38,8 @@ import {
   handCardCostCopy,
   handCardEffectLine,
   illegalReasonForCard,
-  isNonCardBarAction,
+  isCornerPinAction,
+  isPhaseRailAction,
   playActionsForCard,
   playVariantKey,
   type TableDetailKind,
@@ -121,7 +122,7 @@ function darkBidZoneCopy(state: GameState): {
 } {
   const pending = state.pendingDarkBid;
   if (!pending || pending.resolved) {
-    return { status: "collapsed", label: "已收束" };
+    return { status: "collapsed", label: "暗标区空" };
   }
   const bidCount = Object.keys(pending.bids).length;
   if (pending.isCatchUp && bidCount === 0) {
@@ -174,24 +175,6 @@ function seriesProgressCopy(state: GameState): string {
     ? `Sprint ${state.sprint}/${state.config.sprintCount}`
     : `Sprint ${state.sprint}`;
   return `${sprintLabel} · 公共进度 ${state.progress}/${state.totalProgressTarget}`;
-}
-
-function seatStatusCopy(opts: {
-  isHumanSeat: boolean;
-  isBot: boolean;
-  isTurn: boolean;
-  vsBot: boolean;
-}): string {
-  const { isHumanSeat, isBot, isTurn, vsBot } = opts;
-  if (vsBot) {
-    if (isHumanSeat) return "本座";
-    if (isBot && isTurn) return "行动中";
-    return "";
-  }
-  if (isHumanSeat && isTurn) return "本座 · 轮到你";
-  if (isHumanSeat) return "本座";
-  if (isTurn) return "行动中";
-  return "已入座";
 }
 
 /** 人机模式下：真人是否必须亲自处理当前强制窗 */
@@ -365,8 +348,13 @@ export default function PlayShellPage() {
     [state, activeSeat],
   );
 
-  const barActions = useMemo(
-    () => legal.filter((item) => isNonCardBarAction(item.action)),
+  const cornerPinActions = useMemo(
+    () => legal.filter((item) => isCornerPinAction(item.action)),
+    [legal],
+  );
+
+  const phaseRailActions = useMemo(
+    () => legal.filter((item) => isPhaseRailAction(item.action)),
     [legal],
   );
 
@@ -831,16 +819,20 @@ export default function PlayShellPage() {
     state.eventFlippedThisRound && state.currentEventId
       ? getEventCard(state.currentEventId)
       : undefined;
+  /** 本座在下；其余座位对面上条 — 卡牌桌空间 */
+  const localSeatId = vsBot ? humanSeat : activeSeat;
+  const opponents = state.players.filter((p) => p.id !== localSeatId);
+  const localPlayer = state.players.find((p) => p.id === localSeatId) ?? activePlayer;
 
   return (
     <main
-      className="table-shell"
+      className="table-shell card-table"
       onClick={(e) => {
         const target = e.target as HTMLElement | null;
         if (!target) return;
         if (
           target.closest(
-            ".hand-card, .local-ops, .forced-window, .settlement-layer, .target-row, .stage-card, .table-detail-layer, .seat-chip, .demo-drawer, .log-drawer, .phase-bar, .hand-head",
+            ".hand-card, .corner-ops, .hand-confirm-rail, .forced-window, .settlement-layer, .target-row, .stage-card, .table-detail-layer, .seat-chip, .demo-drawer, .log-drawer, .phase-bar, .hand-head, .opponents-strip",
           )
         ) {
           return;
@@ -853,7 +845,7 @@ export default function PlayShellPage() {
           {botFlash}
         </div>
       )}
-      {/* 1. Phase bar — 全局置顶 */}
+      {/* 1. Phase bar — 单行 ≤40px；演示折入次要 */}
       <header
         className={`phase-bar ${showForcedUi ? "busy" : "idle"}`}
         aria-label="相位条"
@@ -874,17 +866,54 @@ export default function PlayShellPage() {
               </div>
             ))}
           </div>
-          <button type="button" className="ghost" onClick={() => setScreen("setup")}>
+          <div className="phase-bar-status">
+            <span className="phase-now">{PHASE_LABEL[state.turnPhase]}</span>
+            {showForcedUi || preview ? (
+              <span className="phase-preview">{preview ?? "强制窗进行中"}</span>
+            ) : (
+              <span className="phase-hud">
+                {turnHudCopy({
+                  vsBot,
+                  isHumanTurn,
+                  currentPlayerId,
+                  state,
+                  botAuto: botActing,
+                })}
+              </span>
+            )}
+          </div>
+          <details className="phase-demo-fold">
+            <summary>演示</summary>
+            <div className="demo-row">
+              <button type="button" className="demo" onClick={runFlipEventDemo}>
+                翻事件
+              </button>
+              <button type="button" className="demo" onClick={runC12Demo}>
+                甩锅 C-12
+              </button>
+              <button type="button" className="demo" onClick={runC13Demo}>
+                抢功 C-13
+              </button>
+              <button type="button" className="demo" onClick={runC14Demo}>
+                反制 C-14
+              </button>
+              <button type="button" className="demo" onClick={runCatchUpDemo}>
+                跨线补开
+              </button>
+              <button type="button" className="demo" onClick={runMultiCrossDemo}>
+                同次多跨线
+              </button>
+              <button type="button" className="demo" onClick={runOkrRevealDemo}>
+                亮 OKR
+              </button>
+              <button type="button" className="demo" onClick={runSprintAdvanceDemo}>
+                Sprint 切换
+              </button>
+            </div>
+          </details>
+          <button type="button" className="ghost phase-back" onClick={() => setScreen("setup")}>
             回开局
           </button>
-        </div>
-        <div className="phase-bar-status">
-          <span>
-            当前阶段：{PHASE_LABEL[state.turnPhase]}
-          </span>
-          {showForcedUi || preview ? (
-            <span className="phase-preview">{preview ?? "强制窗进行中"}</span>
-          ) : null}
         </div>
 
         {showForcedUi && forced === "c14" && interaction?.type === "C14" && (
@@ -1010,7 +1039,43 @@ export default function PlayShellPage() {
         )}
       </header>
 
-      {/* 2. Table center — 舞台桌场域 */}
+      {/* 2. Upper — 对面上条：他座 1–3 横向芯片（禁大卡） */}
+      <section className="opponents-strip" aria-label="对面座位">
+        {opponents.map((p) => {
+          const isBot = vsBot && p.id !== humanSeat;
+          const isTurn = p.id === currentPlayerId;
+          const debtPressure = p.personalDebt > 0 || p.personalBugs > 0;
+          const canSwitchSeat = !vsBot;
+          return (
+            <button
+              key={p.id}
+              type="button"
+              className={`seat-chip facing ${isTurn ? "turn" : ""} ${isBot ? "bot" : ""}`}
+              disabled={vsBot && isBot}
+              onClick={() => {
+                if (canSwitchSeat) {
+                  setActiveSeat(p.id);
+                  clearCardSelection();
+                }
+              }}
+            >
+              <span className="seat-color" aria-hidden />
+              <span className="seat-facing-name">
+                {p.displayName}
+                {isBot ? <span className="bot-tag"> Bot</span> : null}
+              </span>
+              <span className="seat-facing-stat">绩 {p.performance}</span>
+              <span className="seat-facing-stat">手 {p.hand.length}</span>
+              <span className={`seat-facing-stat ${debtPressure ? "pressure" : ""}`}>
+                债{p.personalDebt}/Bug{p.personalBugs}
+              </span>
+              {isTurn ? <span className="seat-facing-turn">行动中</span> : null}
+            </button>
+          );
+        })}
+      </section>
+
+      {/* 3. Center battlefield — 进度轨 + 三槽放大 */}
       <section className="table-center" aria-label="桌心公共区">
         <div className="series-line">{seriesProgressCopy(state)}</div>
 
@@ -1093,17 +1158,25 @@ export default function PlayShellPage() {
           </button>
 
           <div
-            className={`stage-card dark-bid-slot ${darkBidZone.status} fogged`}
-            aria-label="暗标区（背面，不可窥视）"
+            className={`stage-card dark-bid-slot ${darkBidZone.status}${
+              darkBidZone.status === "collapsed" ? "" : " fogged"
+            }`}
+            aria-label={
+              darkBidZone.status === "collapsed"
+                ? "暗标区空"
+                : "暗标区（背面，不可窥视）"
+            }
           >
-            <p className="dark-bid-mark">RS</p>
-            <span className="status-copy">{darkBidZone.label}</span>
-            <span className="fog-copy">背面 · 不可窥视</span>
-            {darkBidZone.status !== "collapsed" && pending && (
-              <span className="muted" style={{ fontSize: "0.65rem" }}>
-                {milestoneName(state, pending.milestoneId)}
-                {pending.isCatchUp ? " · 补开" : ""}
-              </span>
+            {darkBidZone.status === "collapsed" ? (
+              <>
+                <span className="slot-label">暗标</span>
+                <span className="status-copy">{darkBidZone.label}</span>
+              </>
+            ) : (
+              <>
+                <p className="dark-bid-mark">RS</p>
+                <span className="fog-copy">背面</span>
+              </>
             )}
           </div>
         </div>
@@ -1145,91 +1218,98 @@ export default function PlayShellPage() {
         )}
       </section>
 
-      {/* 3. Seat ring — 局况 HUD */}
-      <section className="seat-ring" aria-label="座位环">
-        <div className="seat-ring-grid">
-          {state.players.map((p) => {
-            const isHumanSeat = p.id === humanSeat;
-            const isBot = vsBot && !isHumanSeat;
-            const isOwn = vsBot ? isHumanSeat : p.id === activeSeat;
-            const isTurn = p.id === currentPlayerId;
-            const okrDef = p.okrId ? getOkrCard(p.okrId) : undefined;
-            const debtPressure = p.personalDebt > 0 || p.personalBugs > 0;
-            const canSwitchSeat = !vsBot;
-            return (
-              <button
-                key={p.id}
-                type="button"
-                className={`seat-chip ${isTurn ? "turn" : ""} ${isOwn ? "own" : ""} ${
-                  isBot ? "bot" : ""
-                }`}
-                disabled={vsBot && isBot}
-                onClick={() => {
-                  if (canSwitchSeat) {
-                    setActiveSeat(p.id);
-                    clearCardSelection();
-                  }
-                }}
-              >
-                <div className="seat-chip-head">
-                  <span className="seat-color" aria-hidden />
-                  <div className="seat-titles">
-                    <strong>
-                      {p.displayName}
-                      {isBot ? <span className="bot-tag"> Bot</span> : null}
-                    </strong>
-                    <span className="seat-status">
-                      {seatStatusCopy({
-                        isHumanSeat: isOwn,
-                        isBot,
-                        isTurn,
-                        vsBot,
-                      })}
-                    </span>
-                  </div>
-                </div>
-                <div className="seat-stats">
-                  <span>绩效 {p.performance}</span>
-                  <span>手牌 {p.hand.length}</span>
-                  <span className={debtPressure ? "pressure" : undefined}>
-                    债 {p.personalDebt} · Bug {p.personalBugs}
-                  </span>
-                </div>
-                <div className="seat-okr">
-                  {state.okrRevealed ? (
-                    <span className="muted">已亮牌 · 见结算层</span>
-                  ) : isOwn ? (
-                    <span>OKR · {okrDef?.name ?? "未抽取"}</span>
-                  ) : (
-                    <span className="locked">已抽取 · 结算亮牌</span>
-                  )}
-                </div>
-              </button>
-            );
-          })}
-        </div>
-      </section>
-
-      {/* 4. Local hand + ops — 仅本座可见内容；出牌主路径在手牌 */}
+      {/* 4. Bottom — 本座手牌扇为主视觉；确认打出贴手牌上沿；右下仅钉工时/结束 */}
       <section
-        className="local-zone"
+        className={`local-zone ${opsBlocked ? "covered" : ""} ${
+          actionBarLocked ? "bot-locked" : ""
+        }`}
         aria-label="本座区"
         onClick={(e) => {
           if (e.target === e.currentTarget) clearCardSelection();
         }}
       >
-        <div className="local-hand-block">
-          <div className="hand-head">
-            <h2>本座手牌</h2>
-            {selectedCardId ? (
-              <button type="button" className="ghost" onClick={clearCardSelection}>
-                取消选择
-              </button>
-            ) : null}
+        {opsBlocked && (
+          <div className="ops-cover local-cover" aria-hidden>
+            <span>强制窗进行中 · 完成本座强制响应后继续</span>
           </div>
-          {illegalHint ? <p className="hand-hint">{illegalHint}</p> : null}
+        )}
+
+        <div className="local-hand-block">
+          <div className="hand-confirm-rail">
+            <div className="hand-head">
+              <h2>
+                {localPlayer.displayName}
+                <span className="hand-meta-inline">
+                  {" "}
+                  · 绩 {localPlayer.performance} · 手 {localPlayer.hand.length} · 债
+                  {localPlayer.personalDebt}/Bug{localPlayer.personalBugs}
+                </span>
+              </h2>
+              {selectedCardId ? (
+                <button type="button" className="ghost" onClick={clearCardSelection}>
+                  取消选择
+                </button>
+              ) : null}
+            </div>
+            {illegalHint ? <p className="hand-hint">{illegalHint}</p> : null}
+            {error && <p className="error">{error}</p>}
+            {selectedCardId && selectedPlayOptions.length > 1 ? (
+              <div className="target-row" role="group" aria-label="出牌目标">
+                <span className="target-label">选择目标</span>
+                {selectedPlayOptions.map((item, index) => {
+                  if (item.action.type !== "PLAY_CARD") return null;
+                  const key = playVariantKey(item.action);
+                  return (
+                    <button
+                      key={`var-${key}-${index}`}
+                      type="button"
+                      className={`target-chip ${
+                        selectedVariantKey === key ? "selected" : ""
+                      }`}
+                      onClick={() => setSelectedVariantKey(key)}
+                    >
+                      {compactVariantLabel(item, (id) => seatLabel(state, id))}
+                    </button>
+                  );
+                })}
+              </div>
+            ) : null}
+            <div className="hand-rail-actions">
+              <button
+                type="button"
+                className="primary confirm-play"
+                disabled={!selectedPlayAction || opsBlocked || actionBarLocked}
+                title={
+                  !selectedCardId
+                    ? "先点选一张可打出的手牌"
+                    : selectedPlayOptions.length > 1 && !selectedVariantKey
+                      ? "请选择目标"
+                      : undefined
+                }
+                onClick={confirmSelectedPlay}
+              >
+                确认打出
+              </button>
+              {phaseRailActions.map((item, index) => (
+                <button
+                  key={`${item.action.type}-${index}`}
+                  type="button"
+                  disabled={!item.enabled || opsBlocked || actionBarLocked}
+                  title={actionBarLocked ? "Bot 回合自动中" : item.reason}
+                  className={
+                    !item.enabled || actionBarLocked ? "illegal" : undefined
+                  }
+                  onClick={() => runLegal(item)}
+                >
+                  {barActionLabel(item)}
+                  {!item.enabled && item.reason ? ` — ${item.reason}` : ""}
+                </button>
+              ))}
+            </div>
+          </div>
+
           {activePlayer.hand.length === 0 ? (
-            <p className="muted">空手牌</p>
+            <p className="muted hand-empty">空手牌</p>
           ) : (
             <ul className="hand-fan" aria-label="可点选手牌">
               {activePlayer.hand.map((cardId, index) => {
@@ -1293,62 +1373,20 @@ export default function PlayShellPage() {
               })}
             </ul>
           )}
-          {selectedCardId && selectedPlayOptions.length > 1 ? (
-            <div className="target-row" role="group" aria-label="出牌目标">
-              <span className="target-label">选择目标</span>
-              {selectedPlayOptions.map((item, index) => {
-                if (item.action.type !== "PLAY_CARD") return null;
-                const key = playVariantKey(item.action);
-                return (
-                  <button
-                    key={`var-${key}-${index}`}
-                    type="button"
-                    className={`target-chip ${
-                      selectedVariantKey === key ? "selected" : ""
-                    }`}
-                    onClick={() => setSelectedVariantKey(key)}
-                  >
-                    {compactVariantLabel(item, (id) => seatLabel(state, id))}
-                  </button>
-                );
-              })}
-            </div>
-          ) : null}
         </div>
 
-        <div
-          className={`local-ops ${opsBlocked ? "covered" : ""} ${
-            actionBarLocked ? "bot-locked" : ""
-          }`}
-          aria-label="本座操作"
+        <aside
+          className="corner-ops"
+          aria-label="本座钉住操作"
           aria-disabled={opsBlocked || actionBarLocked}
         >
-          {opsBlocked && (
-            <div className="ops-cover" aria-hidden>
-              <span>强制窗进行中 · 完成本座强制响应后继续</span>
-            </div>
-          )}
-
-          <div className="ops-meta">
-            <span className="phase-copy">当前阶段 · {PHASE_LABEL[state.turnPhase]}</span>
-            <span className="turn-copy">
-              {turnHudCopy({
-                vsBot,
-                isHumanTurn,
-                currentPlayerId,
-                state,
-                botAuto: botActing,
-              })}
-            </span>
-          </div>
-
-          <div className="local-okr">
-            <h2>本座 OKR</h2>
+          <div className="local-okr compact">
+            <span className="okr-kicker">本座 OKR</span>
             {state.okrRevealed && state.okrSettlements ? (
               (() => {
-                const row = state.okrSettlements.find((r) => r.playerId === activeSeat);
+                const row = state.okrSettlements.find((r) => r.playerId === localSeatId);
                 return (
-                  <p>
+                  <p className="okr-title-line">
                     {row
                       ? `${row.name} · ${row.achieved ? `达成 +${row.reward}` : "未达成"}`
                       : "—"}
@@ -1356,90 +1394,32 @@ export default function PlayShellPage() {
                 );
               })()
             ) : (
-              <>
-                <p className="okr-title-line">{selfOkr?.name ?? "未抽取"}</p>
-                <p className="muted">{selfOkr?.conditionText ?? "开局暗抽，总结算亮牌"}</p>
-              </>
+              <p className="okr-title-line">{selfOkr?.name ?? "未抽取"}</p>
             )}
           </div>
-
-          <div className="local-actions">
-            {error && <p className="error">{error}</p>}
-            <div className="action-list action-list-slim">
+          <div className="corner-pin-actions">
+            {cornerPinActions.map((item, index) => (
               <button
+                key={`${item.action.type}-${index}`}
                 type="button"
-                className="primary confirm-play"
-                disabled={
-                  !selectedPlayAction || opsBlocked || actionBarLocked
-                }
-                title={
-                  !selectedCardId
-                    ? "先点选一张可打出的手牌"
-                    : selectedPlayOptions.length > 1 && !selectedVariantKey
-                      ? "请选择目标"
+                disabled={!item.enabled || opsBlocked || actionBarLocked}
+                title={actionBarLocked ? "Bot 回合自动中" : item.reason}
+                className={
+                  !item.enabled || actionBarLocked
+                    ? "illegal"
+                    : item.action.type === "USE_BASE_OVERTIME"
+                      ? "primary"
                       : undefined
                 }
-                onClick={confirmSelectedPlay}
+                onClick={() => runLegal(item)}
               >
-                确认打出
+                {barActionLabel(item)}
+                {!item.enabled && item.reason ? ` — ${item.reason}` : ""}
               </button>
-              {barActions.map((item, index) => (
-                <button
-                  key={`${item.action.type}-${index}`}
-                  type="button"
-                  disabled={!item.enabled || opsBlocked || actionBarLocked}
-                  title={
-                    actionBarLocked
-                      ? "Bot 回合自动中"
-                      : item.reason
-                  }
-                  className={
-                    !item.enabled || actionBarLocked
-                      ? "illegal"
-                      : item.action.type === "USE_BASE_OVERTIME"
-                        ? "primary"
-                        : undefined
-                  }
-                  onClick={() => runLegal(item)}
-                >
-                  {barActionLabel(item)}
-                  {!item.enabled && item.reason ? ` — ${item.reason}` : ""}
-                </button>
-              ))}
-            </div>
+            ))}
           </div>
-        </div>
+        </aside>
       </section>
-
-      <details className="demo-drawer">
-        <summary>演示路径（次要，不抢主流程）</summary>
-        <div className="demo-row">
-          <button type="button" className="demo" onClick={runFlipEventDemo}>
-            演示：翻事件
-          </button>
-          <button type="button" className="demo" onClick={runC12Demo}>
-            演示：甩锅 C-12
-          </button>
-          <button type="button" className="demo" onClick={runC13Demo}>
-            演示：抢功 C-13
-          </button>
-          <button type="button" className="demo" onClick={runC14Demo}>
-            演示：反制 C-14
-          </button>
-          <button type="button" className="demo" onClick={runCatchUpDemo}>
-            演示：跨线补开
-          </button>
-          <button type="button" className="demo" onClick={runMultiCrossDemo}>
-            演示：同次多跨线
-          </button>
-          <button type="button" className="demo" onClick={runOkrRevealDemo}>
-            演示：总结算亮 OKR
-          </button>
-          <button type="button" className="demo" onClick={runSprintAdvanceDemo}>
-            演示：Sprint 切换
-          </button>
-        </div>
-      </details>
 
       <details className="log-drawer">
         <summary>日志</summary>

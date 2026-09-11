@@ -958,6 +958,7 @@ button.demo:hover {
 .hand-card-effect {
   font-size: 0.52rem;
   line-height: 1.2;
+  max-height: 1.2em;
   color: var(--card-muted);
   display: block;
   white-space: nowrap;

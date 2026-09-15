@@ -19,8 +19,9 @@ import {
 } from "../../../lib/online-disconnect-copy";
 import {
   anchorDisconnectGraceDeadline,
-  deadlineFromServerGraceRemainingSec,
+  disconnectDisplayFromPresence,
   graceSecondsLeft,
+  syncDisplayDeadlineFromServerRemaining,
 } from "../../../lib/online-disconnect-grace";
 import {
   clearOnlineSession,
@@ -76,7 +77,8 @@ export default function OnlinePlayPage() {
 
     function beginLocalDisconnectGrace(): void {
       const now = Date.now();
-      // Anchor once per disconnect episode — failed reconnect onClose must not reset.
+      // Display-only fallback while offline. Server grace is authoritative;
+      // never reset/fake-extend on repeated reconnect onClose (JOJO P2).
       const deadline = anchorDisconnectGraceDeadline(
         graceDeadlineRef.current,
         now,
@@ -140,24 +142,20 @@ export default function OnlinePlayPage() {
         }
         setLegal(message.legalActions ?? []);
 
-        const selfPresence = message.presence?.[message.seatId];
-        if (selfPresence?.hosted) {
-          graceDeadlineRef.current = null;
-          setDisconnectUi("hosted");
-        } else if (
-          selfPresence &&
-          !selfPresence.connected &&
-          selfPresence.graceRemainingSec != null &&
-          selfPresence.graceRemainingSec > 0
-        ) {
-          // Align local bar with server mid-grace when presence is available
-          const now = Date.now();
-          graceDeadlineRef.current = deadlineFromServerGraceRemainingSec(
-            selfPresence.graceRemainingSec,
-            now,
+        // Server presence wins the bar; local deadline is only an offline paint.
+        const display = disconnectDisplayFromPresence(
+          message.presence?.[message.seatId],
+        );
+        if (display.kind === "grace") {
+          graceDeadlineRef.current = syncDisplayDeadlineFromServerRemaining(
+            display.remainingSec,
+            Date.now(),
           );
           setDisconnectUi("grace");
-          setGraceLeftSec(selfPresence.graceRemainingSec);
+          setGraceLeftSec(display.remainingSec);
+        } else if (display.kind === "hosted") {
+          graceDeadlineRef.current = null;
+          setDisconnectUi("hosted");
         } else {
           // Reconnected / reclaimed — end disconnect episode
           graceDeadlineRef.current = null;
@@ -201,7 +199,7 @@ export default function OnlinePlayPage() {
     };
   }, [router]);
 
-  // Local grace countdown while WS is down (i-pple top bar).
+  // Display-only countdown while offline (server grace remains authoritative).
   useEffect(() => {
     if (disconnectUi !== "grace") return;
     const id = setInterval(() => {

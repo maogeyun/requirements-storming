@@ -1,4 +1,10 @@
-import { applyAction, createGame, listLegalActions } from "@rs/rules-engine";
+import {
+  applyAction,
+  createGame,
+  listBotActorSeats,
+  listLegalActions,
+  pickHeuristicLegalAction,
+} from "@rs/rules-engine";
 import type {
   ClientJoin,
   ClientMessage,
@@ -12,6 +18,7 @@ import type {
   ServerMessage,
 } from "@rs/shared";
 import { ErrorCode, roomConfigToGameConfig } from "@rs/shared";
+import { type MatchClock, defaultMatchClock } from "./clock";
 import { isLegalIntent } from "./intent";
 import {
   getDefaultRoomConfig,
@@ -28,6 +35,11 @@ export interface SeatBinding {
   connectionId: string | null;
   connected: boolean;
   isHost: boolean;
+  /**
+   * Server-only. Never copy into LobbyPlayer / PlayerView / any client frame.
+   * Silent match fill seats pretend to be humans on the wire.
+   */
+  isBot?: boolean;
 }
 
 /** 联机房间固定满 4 开局（老乔确认：不可不足开局）。 */
@@ -37,6 +49,7 @@ export interface MatchRoomOptions {
   roomCode: string;
   seed?: number;
   emit: EmitFn;
+  clock?: MatchClock;
 }
 
 function newSeatToken(): string {
@@ -52,16 +65,25 @@ export class MatchRoom {
   gameState: GameState | null = null;
   private readonly seed: number | undefined;
   private readonly emit: EmitFn;
+  private readonly clock: MatchClock;
+  private botTurnTimer: unknown = null;
+  private botBusy = false;
 
   constructor(options: MatchRoomOptions) {
     this.roomCode = options.roomCode;
     this.config = getDefaultRoomConfig(REQUIRED_SEAT_COUNT);
     this.seed = options.seed;
     this.emit = options.emit;
+    this.clock = options.clock ?? defaultMatchClock;
   }
 
   get hostSeatId(): string | null {
     return this.seats.find((s) => s.isHost)?.seatId ?? null;
+  }
+
+  /** Seat ids that are silent fill bots (server-only). */
+  botSeatIds(): string[] {
+    return this.seats.filter((s) => s.isBot).map((s) => s.seatId);
   }
 
   handleMessage(connectionId: string, message: ClientMessage): void {
@@ -95,6 +117,33 @@ export class MatchRoom {
     }
   }
 
+  /**
+   * Silent match fill: add heuristic Bot seats with human-looking names.
+   * Does not emit isBot; lobby/view names look like humans.
+   * Starts the game when seated === 4.
+   */
+  fillSilentBots(displayNames: string[]): void {
+    if (this.phase !== "lobby") return;
+    for (const name of displayNames) {
+      if (this.seats.length >= REQUIRED_SEAT_COUNT) break;
+      const seatIndex = this.seats.length;
+      this.seats.push({
+        seatId: `p${seatIndex + 1}`,
+        displayName: name,
+        seatToken: newSeatToken(),
+        connectionId: null,
+        connected: true,
+        isHost: false,
+        isBot: true,
+      });
+    }
+    // Humans already in seats get an updated ring (names look human) then auto-start.
+    this.broadcastLobby();
+    if (this.seats.length === REQUIRED_SEAT_COUNT) {
+      this.startGame();
+    }
+  }
+
   private handleJoin(connectionId: string, message: ClientJoin): void {
     const name = message.displayName.trim();
     if (!name) {
@@ -120,6 +169,9 @@ export class MatchRoom {
         existing.connected = true;
         existing.displayName = name || existing.displayName;
         this.sendSeatSnapshot(connectionId);
+        if (this.phase === "playing") {
+          this.queueBotTurns();
+        }
         return;
       }
     }
@@ -208,6 +260,7 @@ export class MatchRoom {
     this.gameState = gameState;
     this.phase = "playing";
     this.broadcastPlaying();
+    this.queueBotTurns();
   }
 
   private handleIntent(connectionId: string, action: GameAction): void {
@@ -254,6 +307,7 @@ export class MatchRoom {
     }
 
     this.broadcastPlaying(result.events);
+    this.queueBotTurns();
   }
 
   private handleLeave(connectionId: string): void {
@@ -273,6 +327,10 @@ export class MatchRoom {
     this.onDisconnect(connectionId);
   }
 
+  /**
+   * Lobby payload for clients — strips server-only isBot.
+   * Empty seats are implied by seatCount − players.length (UI draws dashed empties).
+   */
   private buildLobbyState(): LobbyState {
     const players: LobbyPlayer[] = this.seats.map((s) => ({
       id: s.seatId,
@@ -381,5 +439,57 @@ export class MatchRoom {
       type: "error",
       error: { code, message },
     });
+  }
+
+  /** Schedule heuristic Bot turns for silent-fill seats (no client Bot labels). */
+  private queueBotTurns(): void {
+    if (this.botTurnTimer != null) {
+      this.clock.clearTimeout(this.botTurnTimer);
+      this.botTurnTimer = null;
+    }
+    if (this.phase === "finished" || !this.gameState) return;
+    if (this.botSeatIds().length === 0) return;
+    this.botTurnTimer = this.clock.setTimeout(() => {
+      this.botTurnTimer = null;
+      this.runBotTurns();
+    }, 0);
+  }
+
+  private runBotTurns(): void {
+    if (this.botBusy) return;
+    if (!this.gameState || this.phase === "finished") return;
+    const botIds = this.botSeatIds();
+    if (botIds.length === 0) return;
+
+    this.botBusy = true;
+    try {
+      let guard = 0;
+      const allEvents: string[] = [];
+      while (guard < 48 && this.gameState && this.phase !== "finished") {
+        guard += 1;
+        const actors = listBotActorSeats(this.gameState, botIds);
+        if (actors.length === 0) break;
+
+        let progressed = false;
+        for (const seatId of actors) {
+          const pick = pickHeuristicLegalAction(this.gameState, seatId);
+          if (!pick) continue;
+          const result = applyAction(this.gameState, pick.action);
+          if (!result.ok) continue;
+          progressed = true;
+          allEvents.push(...result.events);
+          if (this.gameState.gameOver) {
+            this.phase = "finished";
+            break;
+          }
+        }
+        if (!progressed) break;
+      }
+      if (allEvents.length > 0) {
+        this.broadcastPlaying(allEvents);
+      }
+    } finally {
+      this.botBusy = false;
+    }
   }
 }

@@ -16,6 +16,12 @@
 
 鉴权 V1：stub `seatToken`（Steam Session Ticket 后补）。主机不可改规则。开局条件：`seated === 4`（不足拒绝）。
 
+### 自由匹配（i-pple 不泄锁）
+
+- `mode: "match"`：真人优先凑满 4；不足时 **60s** 后静默用启发式 Bot 补位并开局。
+- 客户端 Ambient 文案仅「正在匹配玩家 · Ns / 预计不久开局」——**不下发**超时倒计时、Bot、补位、「匹配失败」。
+- Bot 座位用假人名；`LobbyPlayer` / `PlayerView` **永不**带 `isBot`。
+
 ## 本地启动
 
 ```bash

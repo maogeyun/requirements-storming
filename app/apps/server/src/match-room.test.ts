@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { ServerMessage } from "@rs/shared";
 import { ErrorCode } from "@rs/shared";
+import { createFakeClock } from "./clock";
+import { leaksBotMarker, pickFakeDisplayNames } from "./fake-names";
 import { isLegalIntent } from "./intent";
 import { MatchHub } from "./match-hub";
 import { MatchRoom, REQUIRED_SEAT_COUNT } from "./match-room";
@@ -251,6 +253,127 @@ describe("MatchHub create/join", () => {
     const room = hub.rooms.get(code);
     expect(room?.phase).toBe("playing");
     expect(room?.seats).toHaveLength(4);
+  });
+});
+
+describe("MatchHub free-match silent Bot fill", () => {
+  it("stays unmatched under 4 humans before 60s (lobby not opened)", () => {
+    const { inbox, emit } = collectEmit();
+    const clock = createFakeClock();
+    const hub = new MatchHub(emit, { seed: 7, clock, botFillMs: 60_000 });
+
+    hub.handleMessage(
+      "c1",
+      JSON.stringify({ type: "join", mode: "match", displayName: "Alice" }),
+    );
+    hub.handleMessage(
+      "c2",
+      JSON.stringify({ type: "join", mode: "match", displayName: "Bob" }),
+    );
+
+    expect(hub.matchQueueLength).toBe(2);
+    expect(hub.rooms.size).toBe(0);
+    expect(inbox.get("c1") ?? []).toHaveLength(0);
+
+    clock.tick(59_000);
+    expect(hub.matchQueueLength).toBe(2);
+    expect(hub.rooms.size).toBe(0);
+  });
+
+  it("at 60s fills remaining seats with fake names and starts with 4", () => {
+    const { inbox, emit } = collectEmit();
+    const clock = createFakeClock();
+    const hub = new MatchHub(emit, { seed: 7, clock, botFillMs: 60_000 });
+
+    hub.handleMessage(
+      "c1",
+      JSON.stringify({ type: "join", mode: "match", displayName: "Alice" }),
+    );
+    hub.handleMessage(
+      "c2",
+      JSON.stringify({ type: "join", mode: "match", displayName: "Bob" }),
+    );
+
+    clock.tick(60_000);
+
+    expect(hub.matchQueueLength).toBe(0);
+    expect(hub.rooms.size).toBe(1);
+    const room = [...hub.rooms.values()][0]!;
+    expect(room.phase).toBe("playing");
+    expect(room.seats).toHaveLength(4);
+    expect(room.botSeatIds()).toHaveLength(2);
+
+    const view = (inbox.get("c1") ?? []).find((m) => m.type === "view" && m.phase === "playing");
+    expect(view?.type).toBe("view");
+    if (view?.type !== "view" || !view.view) return;
+
+    const names = view.view.players.map((p) => p.displayName);
+    expect(names).toHaveLength(4);
+    for (const name of names) {
+      expect(leaksBotMarker(String(name))).toBe(false);
+    }
+  });
+
+  it("client-facing lobby/view JSON has no Bot markers or isBot flags", () => {
+    const { inbox, emit } = collectEmit();
+    const clock = createFakeClock();
+    const hub = new MatchHub(emit, { seed: 3, clock, botFillMs: 1_000 });
+
+    hub.handleMessage(
+      "c1",
+      JSON.stringify({ type: "join", mode: "match", displayName: "Host" }),
+    );
+    clock.tick(1_000);
+
+    const room = [...hub.rooms.values()][0]!;
+    expect(room.phase).toBe("playing");
+
+    const payload = JSON.stringify(inbox.get("c1") ?? []);
+    expect(leaksBotMarker(payload)).toBe(false);
+    expect(payload.toLowerCase()).not.toContain("isbot");
+    expect(payload).not.toContain('"isBot"');
+
+    // Lobby path: create room under-4 stays lobby; seat names clean
+    const { inbox: inbox2, emit: emit2 } = collectEmit();
+    const room2 = new MatchRoom({ roomCode: "LOB", seed: 1, emit: emit2 });
+    room2.handleMessage("h1", { type: "join", mode: "create", displayName: "H" });
+    room2.fillSilentBots(pickFakeDisplayNames(3, new Set(["H"])));
+    expect(room2.phase).toBe("playing");
+    const lobbyOrPlay = JSON.stringify(inbox2.get("h1") ?? []);
+    expect(leaksBotMarker(lobbyOrPlay)).toBe(false);
+    expect(lobbyOrPlay).not.toContain('"isBot"');
+  });
+
+  it("four humans match immediately without Bot seats", () => {
+    const { emit } = collectEmit();
+    const clock = createFakeClock();
+    const hub = new MatchHub(emit, { seed: 11, clock });
+
+    for (let i = 1; i <= 4; i += 1) {
+      hub.handleMessage(
+        `c${i}`,
+        JSON.stringify({ type: "join", mode: "match", displayName: `P${i}` }),
+      );
+    }
+    expect(hub.matchQueueLength).toBe(0);
+    const room = [...hub.rooms.values()][0]!;
+    expect(room.phase).toBe("playing");
+    expect(room.botSeatIds()).toHaveLength(0);
+  });
+
+  it("leave cancels free-match queue", () => {
+    const { emit } = collectEmit();
+    const clock = createFakeClock();
+    const hub = new MatchHub(emit, { seed: 1, clock, botFillMs: 60_000 });
+    hub.handleMessage(
+      "c1",
+      JSON.stringify({ type: "join", mode: "match", displayName: "A" }),
+    );
+    expect(hub.matchQueueLength).toBe(1);
+    hub.handleMessage("c1", JSON.stringify({ type: "leave" }));
+    expect(hub.matchQueueLength).toBe(0);
+    clock.tick(60_000);
+    expect(hub.rooms.size).toBe(0);
   });
 });
 

@@ -48,7 +48,6 @@ import {
   canTimerDismissInfoTip,
   detectForcedWindow,
   detectSettlement,
-  playNodeKey,
   settlementKeyFor,
   settlementNeedsAction,
   shouldAutoDismissSettlement,
@@ -348,6 +347,7 @@ export default function PlayShellPage() {
   const [sprintSwitchAckedKey, setSprintSwitchAckedKey] = useState<string | null>(null);
   const [settlementDismissedKey, setSettlementDismissedKey] = useState<string | null>(null);
   const [infoTip, setInfoTip] = useState<InfoTip | null>(null);
+  const [commitGen, setCommitGen] = useState(0);
   const [botFlash, setBotFlash] = useState<string | null>(null);
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
   const [selectedVariantKey, setSelectedVariantKey] = useState<string | null>(null);
@@ -361,7 +361,7 @@ export default function PlayShellPage() {
   const settlementLayerRef = useRef<HTMLDivElement | null>(null);
   const botBusyRef = useRef(false);
   const illegalPressTimer = useRef<number | null>(null);
-  const playNodeKeyRef = useRef<string | null>(null);
+  const playNodeKeyRef = useRef<number | null>(null);
   const prevForcedRef = useRef<ForcedWindowKind | undefined>(undefined);
   const prevSprintSwitchKeyRef = useRef<string | null>(null);
   const prevSettlementKeyRef = useRef<string | null>(null);
@@ -522,6 +522,7 @@ export default function PlayShellPage() {
     setSprintSwitchAckedKey(null);
     setSettlementDismissedKey(null);
     setInfoTip(null);
+    setCommitGen(0);
     playNodeKeyRef.current = null;
     prevForcedRef.current = undefined;
     prevSprintSwitchKeyRef.current = null;
@@ -545,6 +546,7 @@ export default function PlayShellPage() {
   }
 
   function commit(next: GameState, events: string[] = []) {
+    setCommitGen((g) => g + 1);
     setState(cloneState(next));
     pushLog(events);
     setError(null);
@@ -714,7 +716,7 @@ export default function PlayShellPage() {
     sprintSwitchAckedKey,
   ]);
 
-  /** 节点推进 → 立刻关掉「推进前已打开」的信息层；新出现的层同帧不关 */
+  /** commit 推进 = 下一节点：关掉推进前已打开的信息层；新出现的层同帧不关 */
   useEffect(() => {
     if (screen !== "play" || !state) {
       playNodeKeyRef.current = null;
@@ -724,10 +726,9 @@ export default function PlayShellPage() {
       return;
     }
 
-    const node = playNodeKey(state);
-    const prevNode = playNodeKeyRef.current;
-    const nodeAdvanced = prevNode !== null && prevNode !== node;
-    playNodeKeyRef.current = node;
+    const prevGen = playNodeKeyRef.current;
+    const nodeAdvanced = prevGen !== null && prevGen !== commitGen;
+    playNodeKeyRef.current = commitGen;
 
     const nextForced = detectForcedWindow(state);
     const prevForced = prevForcedRef.current;
@@ -769,7 +770,7 @@ export default function PlayShellPage() {
     prevSettlementKeyRef.current = currentSettlementKey;
 
     const now = Date.now();
-    // 强制窗刚结束 → reveal tip（同帧在清旧 tip 之后挂上；节点再推进会立刻清）
+    // 强制窗刚结束 → reveal tip（同帧在清旧 tip 之后挂上；下一 commit 会立刻清）
     const nextTip = tipFromForcedTransition(prevForced, nextForced, now);
     if (nextTip) {
       infoTipRef.current = nextTip;
@@ -795,8 +796,8 @@ export default function PlayShellPage() {
     if (dismissedInfo) {
       focusAfterOverlayClose();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- fingerprint-driven
-  }, [screen, state]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- commit-gen driven
+  }, [screen, state, commitGen]);
 
   useEffect(() => {
     infoTipRef.current = infoTip;

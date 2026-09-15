@@ -1,9 +1,18 @@
-import type { GameAction, GameConfig, GameModuleFlags, GameState, OkrEvaluation, PlayerState } from "./types";
+import type {
+  GameAction,
+  GameConfig,
+  GameModuleFlags,
+  GameState,
+  LegalAction,
+  MilestoneId,
+  OkrEvaluation,
+  PlayerState,
+} from "./types";
 import type { ErrorPayload } from "./errors";
 
 export type RoomPhase = "lobby" | "playing" | "finished";
 
-/** 房间配置，与 GameConfig 对齐 */
+/** 房间配置，与 GameConfig 对齐；V1 主机不可改规则，仅服务端默认。 */
 export interface RoomConfig {
   playerCount: number;
   sprintCount: number;
@@ -23,6 +32,8 @@ export interface LobbyState {
   phase: "lobby";
   roomCode: string;
   hostId: string;
+  /** 目标座位数：联机固定 4（满员才开局） */
+  seatCount: number;
   config: RoomConfig;
   players: LobbyPlayer[];
 }
@@ -55,7 +66,7 @@ export interface OtherPlayerView extends PublicPlayerSummary {
 
 export type PlayerViewEntry = SelfPlayerView | OtherPlayerView;
 
-/** 对单个客户端可见的游戏状态 */
+/** 对单个客户端可见的游戏状态（座位作用域） */
 export interface PlayerView {
   phase: RoomPhase;
   selfId: string;
@@ -95,77 +106,102 @@ export interface GameRoomState {
   gameState: GameState;
 }
 
-// --- Client → Server ---
+// --- RedQueen V1 online protocol (WS JSON frames) ---
+// Client → Server: join / intent / resync / leave
+// Server → Client: view / force / error
 
-export interface ClientJoinRoom {
-  type: "JOIN_ROOM";
-  playerName: string;
+export type JoinMode = "create" | "join" | "match";
+
+/** 创建/加入/简单匹配。V1 鉴权为 stub seatToken（Steam Session Ticket 后补）。 */
+export interface ClientJoin {
+  type: "join";
+  mode: JoinMode;
+  /** join 必填；create 可省略（服务端生成）；match 可省略 */
+  roomCode?: string;
+  displayName: string;
+  /** 重连时带回；首次加入可省略，由服务端签发 stub */
+  seatToken?: string;
+  /**
+   * 可选；联机固定满 4 开局。若传入且 !== 4，服务端拒绝。
+   * 主机不可改规则 / 不可不足人数开局。
+   */
+  seatCount?: number;
 }
 
-export interface ClientCreateRoom {
-  type: "CREATE_ROOM";
-  playerName: string;
-  config: RoomConfig;
-}
-
-export interface ClientStartGame {
-  type: "START_GAME";
-}
-
-export interface ClientSubmitAction {
-  type: "SUBMIT_ACTION";
+/** 客户端意图：权威服务端用 listLegalActions 校验后 applyAction */
+export interface ClientIntent {
+  type: "intent";
   action: GameAction;
 }
 
-export interface ClientSubmitDarkBid {
-  type: "SUBMIT_DARK_BID";
-  amount: number;
+/** 请求重新下发本座位 view（及当前 force 窗） */
+export interface ClientResync {
+  type: "resync";
 }
 
-export interface ClientRequestState {
-  type: "REQUEST_STATE";
+export interface ClientLeave {
+  type: "leave";
 }
 
 export type ClientMessage =
-  | ClientJoinRoom
-  | ClientCreateRoom
-  | ClientStartGame
-  | ClientSubmitAction
-  | ClientSubmitDarkBid
-  | ClientRequestState;
+  | ClientJoin
+  | ClientIntent
+  | ClientResync
+  | ClientLeave;
 
-// --- Server → Client ---
+/** 强制响应窗（暗标补开 / C-13 / C-14） */
+export type ForceWindow =
+  | {
+      kind: "dark_bid";
+      milestoneId: MilestoneId;
+      isCatchUp: boolean;
+      mustRespond: true;
+    }
+  | {
+      kind: "c13";
+      milestoneId: MilestoneId;
+      breakerId: string;
+      mustRespond: true;
+    }
+  | {
+      kind: "c14";
+      sourceCardId: "C-12" | "C-13";
+      sourceId: string;
+      targetId: string;
+      mustRespond: true;
+    };
 
-export interface ServerRoomState {
-  type: "ROOM_STATE";
+/** 座位作用域视图推送 */
+export interface ServerView {
+  type: "view";
+  roomCode: string;
+  seatId: string;
+  /** stub seatToken；后续可换 Steam Session Ticket */
+  seatToken: string;
+  phase: RoomPhase;
   lobby?: LobbyState;
   view?: PlayerView;
-}
-
-export interface ServerActionResult {
-  type: "ACTION_RESULT";
-  success: boolean;
-  view: PlayerView;
+  /** 当前座位可用动作（enabled 过滤前的 listLegalActions 快照可选） */
+  legalActions?: LegalAction[];
   events?: string[];
 }
 
+/** 强制窗推送（与 view 一并或单独下发） */
+export interface ServerForce {
+  type: "force";
+  roomCode: string;
+  seatId: string;
+  window: ForceWindow;
+}
+
 export interface ServerError {
-  type: "ERROR";
+  type: "error";
   error: ErrorPayload;
+  /** 非法 intent 时带回被拒动作，便于客户端对齐 */
+  rejectedAction?: GameAction;
 }
 
-export interface ServerDarkBidReveal {
-  type: "DARK_BID_REVEAL";
-  milestoneId: string;
-  bids: Record<string, number>;
-  crosserId: string | null;
-}
-
-export type ServerMessage =
-  | ServerRoomState
-  | ServerActionResult
-  | ServerError
-  | ServerDarkBidReveal;
+export type ServerMessage = ServerView | ServerForce | ServerError;
 
 export function roomConfigToGameConfig(config: RoomConfig): GameConfig {
   return {

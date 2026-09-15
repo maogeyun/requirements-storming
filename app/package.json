@@ -5,7 +5,7 @@
   "description": "《需求风暴》Web/Steam 联机卡牌游戏",
   "scripts": {
     "build": "pnpm -r run build",
-    "test": "pnpm --filter @rs/rules-engine test && pnpm --filter @rs/web test",
+    "test": "pnpm --filter @rs/rules-engine test && pnpm --filter @rs/server test && pnpm --filter @rs/web test",
     "typecheck": "pnpm -r run typecheck",
     "lint": "eslint .",
     "validate:data": "pnpm --filter @rs/game-data validate",

@@ -11,7 +11,7 @@ app/
 │   ├── shared/         # 共用类型、WS 协议、错误码
 │   └── rules-engine/   # 规则引擎（纯逻辑）
 ├── apps/
-│   ├── server/         # PartyKit 联机房间服务
+│   ├── server/         # match-server（RedQueen V1 WS）
 │   ├── web/            # Next.js 15 前端
 │   └── desktop/        # Electron 壳（S1 占位）
 ├── steam/              # Steamworks 配置（S1 占位）
@@ -25,14 +25,16 @@ app/
 ## 架构数据流
 
 ```
-Web 客户端 ──WS──▶ apps/server (PartyKit)
+Web 客户端 ──WS──▶ apps/server (match-server · RedQueen V1)
                       │
                       ▼
-                 rules-engine (validate + apply)
+                 rules-engine (listLegalActions → applyAction)
                       │
                       ▼
-              broadcast PlayerView（按玩家过滤手牌/OKR/暗标）
+              broadcast seat-scoped view（剥离他座手牌/OKR）+ force 窗
 ```
+
+协议帧：`join` / `intent` / `view` / `force` / `resync` / `leave`。详见 [`apps/server/README.md`](./apps/server/README.md)。
 
 ## 快速开始
 
@@ -51,7 +53,7 @@ workspace 包（`@rs/shared` / `@rs/game-data` / `@rs/rules-engine`）以 **TS �
 启动开发服务（两个终端）：
 
 ```bash
-pnpm dev:server   # PartyKit @ localhost:1999
+pnpm dev:server   # match-server WS @ localhost:8787
 pnpm dev:web      # Next.js @ localhost:3000
 ```
 
@@ -62,7 +64,7 @@ pnpm dev:web      # Next.js @ localhost:3000
 - [x] monorepo 结构符合 §3.1
 - [x] 卡表 v1.2 JSON + 校验脚本
 - [x] `@rs/shared` 类型 / 协议 / 错误码
-- [x] PartyKit server 骨架 + player-view 过滤
+- [x] match-server 骨架 + player-view 过滤（RedQueen V1）
 - [x] Next.js 最小可运行前端
 - [x] ESLint + pnpm workspace + `.env.example`
 
@@ -80,9 +82,9 @@ pnpm dev:web      # Next.js @ localhost:3000
 
 ### M2+（待做）
 
-- [ ] 联机完整 action 校验链
+- [x] 联机 intent 校验链（listLegalActions → applyAction）骨架
 - [ ] 大厅 / 牌桌 UI
-- [ ] 暗标 reveal 时序、断线重连
+- [ ] 暗标 reveal 时序、断线重连 / Bot 接管
 
 ## M1 可玩壳
 

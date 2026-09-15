@@ -1,4 +1,5 @@
 import type {
+  ForceWindow,
   GameState,
   OtherPlayerView,
   PlayerState,
@@ -10,17 +11,17 @@ import type {
   SelfPlayerView,
 } from "@rs/shared";
 
-export function getDefaultRoomConfig(): RoomConfig {
+/** V1 主机不可改规则：固定默认模块；联机人数固定 4。 */
+export function getDefaultRoomConfig(playerCount = 4): RoomConfig {
   return {
-    playerCount: 4,
-    sprintCount: 2,
+    playerCount,
+    sprintCount: 1,
     modules: {
       darkBid: true,
       interactionCards: true,
       hiddenOkr: true,
-      continuousSprint: true,
+      continuousSprint: false,
     },
-    requirementId: "R-01",
   };
 }
 
@@ -44,12 +45,16 @@ function shouldRevealOkr(gameState: GameState): boolean {
   return gameState.okrRevealed;
 }
 
+/**
+ * Seat-scoped view：剥离他座手牌 / OKR / 暗标出价等秘密。
+ * 公开：performance、debt、bugs、handCount 等。
+ */
 export function getPlayerView(
   gameState: GameState,
   selfId: string,
   roomCode: string,
   phase: RoomPhase,
-  config: RoomConfig = getDefaultRoomConfig(),
+  config: RoomConfig = getDefaultRoomConfig(gameState.config.playerCount),
 ): PlayerView {
   const revealOkr = shouldRevealOkr(gameState);
   const pendingDarkBid = gameState.pendingDarkBid;
@@ -100,4 +105,50 @@ export function getPlayerView(
     okrRevealed: gameState.okrRevealed,
     okrSettlements: revealOkr ? gameState.okrSettlements : null,
   };
+}
+
+/** 对指定座位是否存在必须响应的强制窗；无关座位返回 null。 */
+export function getForceWindowForSeat(
+  state: GameState,
+  seatId: string,
+): ForceWindow | null {
+  const interaction = state.pendingInteraction;
+  if (interaction?.type === "C14") {
+    if (interaction.targetId !== seatId) return null;
+    return {
+      kind: "c14",
+      sourceCardId: interaction.sourceCardId,
+      sourceId: interaction.sourceId,
+      targetId: interaction.targetId,
+      mustRespond: true,
+    };
+  }
+
+  if (interaction?.type === "C13_WINDOW") {
+    if (
+      seatId === interaction.breakerId ||
+      interaction.passedIds.includes(seatId)
+    ) {
+      return null;
+    }
+    return {
+      kind: "c13",
+      milestoneId: interaction.milestoneId,
+      breakerId: interaction.breakerId,
+      mustRespond: true,
+    };
+  }
+
+  const pending = state.pendingDarkBid;
+  if (pending && !pending.resolved) {
+    if (seatId in pending.bids) return null;
+    return {
+      kind: "dark_bid",
+      milestoneId: pending.milestoneId,
+      isCatchUp: pending.isCatchUp,
+      mustRespond: true,
+    };
+  }
+
+  return null;
 }

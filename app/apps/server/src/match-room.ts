@@ -15,9 +15,15 @@ import type {
   LobbyState,
   RoomConfig,
   RoomPhase,
+  SeatPresence,
   ServerMessage,
 } from "@rs/shared";
-import { ErrorCode, roomConfigToGameConfig } from "@rs/shared";
+import {
+  DISCONNECT_GRACE_MS,
+  ErrorCode,
+  disconnectGraceRemainingSec,
+  roomConfigToGameConfig,
+} from "@rs/shared";
 import { type MatchClock, defaultMatchClock } from "./clock";
 import { isLegalIntent } from "./intent";
 import {
@@ -40,6 +46,15 @@ export interface SeatBinding {
    * Silent match fill seats pretend to be humans on the wire.
    */
   isBot?: boolean;
+  /** Wall-clock when reconnect grace ends; null if connected or not in grace. */
+  disconnectGraceUntil: number | null;
+  /** Timer handle for grace → hosted transition. */
+  graceTimer: unknown | null;
+  /**
+   * After grace expires: heuristic Bot plays this human seat until seatToken reclaim.
+   * Distinct from `isBot` silent-fill — clients may show 托管 for this flag only.
+   */
+  disconnectHosted: boolean;
 }
 
 /** 联机房间固定满 4 开局（老乔确认：不可不足开局）。 */
@@ -50,16 +65,30 @@ export interface MatchRoomOptions {
   seed?: number;
   emit: EmitFn;
   clock?: MatchClock;
+  /** Override disconnect grace (default DISCONNECT_GRACE_MS = 45s). */
+  disconnectGraceMs?: number;
 }
 
 function newSeatToken(): string {
   return `stub_${Math.random().toString(36).slice(2, 10)}_${Date.now().toString(36)}`;
 }
 
+function emptySeatFlags(): Pick<
+  SeatBinding,
+  "disconnectGraceUntil" | "graceTimer" | "disconnectHosted"
+> {
+  return {
+    disconnectGraceUntil: null,
+    graceTimer: null,
+    disconnectHosted: false,
+  };
+}
+
 export class MatchRoom {
   readonly roomCode: string;
   readonly seatCount = REQUIRED_SEAT_COUNT;
   readonly config: RoomConfig;
+  readonly disconnectGraceMs: number;
   phase: RoomPhase = "lobby";
   seats: SeatBinding[] = [];
   gameState: GameState | null = null;
@@ -75,15 +104,22 @@ export class MatchRoom {
     this.seed = options.seed;
     this.emit = options.emit;
     this.clock = options.clock ?? defaultMatchClock;
+    this.disconnectGraceMs = options.disconnectGraceMs ?? DISCONNECT_GRACE_MS;
   }
 
   get hostSeatId(): string | null {
     return this.seats.find((s) => s.isHost)?.seatId ?? null;
   }
 
-  /** Seat ids that are silent fill bots (server-only). */
+  /**
+   * Seat ids that run heuristic Bot:
+   * - silent fill (`isBot`)
+   * - disconnect takeover after grace (`disconnectHosted`)
+   */
   botSeatIds(): string[] {
-    return this.seats.filter((s) => s.isBot).map((s) => s.seatId);
+    return this.seats
+      .filter((s) => s.isBot || s.disconnectHosted)
+      .map((s) => s.seatId);
   }
 
   handleMessage(connectionId: string, message: ClientMessage): void {
@@ -105,15 +141,25 @@ export class MatchRoom {
     }
   }
 
-  /** 连接断开：V1 仅 stub；Bot 接管后续 PR。 */
+  /**
+   * Connection dropped (i-pple):
+   * - lobby: mark disconnected
+   * - playing: retain seat, start grace; after timeout → Bot takeover until reclaim
+   */
   onDisconnect(connectionId: string): void {
     const seat = this.seats.find((s) => s.connectionId === connectionId);
     if (!seat) return;
     seat.connected = false;
     seat.connectionId = null;
-    // TODO(disconnect): Bot takeover / reconnect grace — out of scope for V1 skeleton
+
     if (this.phase === "lobby") {
       this.broadcastLobby();
+      return;
+    }
+
+    if (this.phase === "playing" && !seat.isBot) {
+      this.beginDisconnectGrace(seat);
+      this.broadcastPlaying();
     }
   }
 
@@ -135,6 +181,7 @@ export class MatchRoom {
         connected: true,
         isHost: false,
         isBot: true,
+        ...emptySeatFlags(),
       });
     }
     // Humans already in seats get an updated ring (names look human) then auto-start.
@@ -165,12 +212,19 @@ export class MatchRoom {
     if (message.seatToken) {
       const existing = this.seats.find((s) => s.seatToken === message.seatToken);
       if (existing) {
+        const wasAway = !existing.connected || existing.disconnectHosted;
+        this.clearDisconnectGrace(existing);
         existing.connectionId = connectionId;
         existing.connected = true;
+        existing.disconnectHosted = false;
         existing.displayName = name || existing.displayName;
-        this.sendSeatSnapshot(connectionId);
+        this.sendSeatSnapshot(connectionId, { reclaimed: wasAway });
+        // Refresh presence for other connected seats
         if (this.phase === "playing") {
+          this.broadcastPlayingExcept(connectionId);
           this.queueBotTurns();
+        } else if (this.phase === "lobby") {
+          this.broadcastLobby();
         }
         return;
       }
@@ -199,6 +253,7 @@ export class MatchRoom {
       connectionId,
       connected: true,
       isHost: seatIndex === 0,
+      ...emptySeatFlags(),
     };
     this.seats.push(seat);
     this.broadcastLobby();
@@ -319,7 +374,8 @@ export class MatchRoom {
     if (index < 0) return;
 
     if (this.phase === "lobby") {
-      this.seats.splice(index, 1);
+      const [removed] = this.seats.splice(index, 1);
+      if (removed) this.clearDisconnectGrace(removed);
       if (this.seats.length > 0 && !this.seats.some((s) => s.isHost)) {
         this.seats[0]!.isHost = true;
       }
@@ -327,8 +383,53 @@ export class MatchRoom {
       return;
     }
 
-    // In-game leave: mark disconnected only (Bot takeover later)
+    // In-game leave: same as disconnect (grace → Bot takeover)
     this.onDisconnect(connectionId);
+  }
+
+  private beginDisconnectGrace(seat: SeatBinding): void {
+    this.clearDisconnectGrace(seat);
+    seat.disconnectHosted = false;
+    seat.disconnectGraceUntil = this.clock.now() + this.disconnectGraceMs;
+    seat.graceTimer = this.clock.setTimeout(() => {
+      seat.graceTimer = null;
+      seat.disconnectGraceUntil = null;
+      seat.disconnectHosted = true;
+      this.broadcastPlaying();
+      this.queueBotTurns();
+    }, this.disconnectGraceMs);
+  }
+
+  private clearDisconnectGrace(seat: SeatBinding): void {
+    if (seat.graceTimer != null) {
+      this.clock.clearTimeout(seat.graceTimer);
+      seat.graceTimer = null;
+    }
+    seat.disconnectGraceUntil = null;
+  }
+
+  buildPresence(): Record<string, SeatPresence> {
+    const now = this.clock.now();
+    const presence: Record<string, SeatPresence> = {};
+    for (const seat of this.seats) {
+      // Silent-fill bots never expose hosted / grace (free-match non-disclosure).
+      if (seat.isBot) {
+        presence[seat.seatId] = {
+          connected: true,
+          graceRemainingSec: null,
+          hosted: false,
+        };
+        continue;
+      }
+      presence[seat.seatId] = {
+        connected: seat.connected,
+        graceRemainingSec: seat.disconnectHosted
+          ? null
+          : disconnectGraceRemainingSec(seat.disconnectGraceUntil, now),
+        hosted: seat.disconnectHosted,
+      };
+    }
+    return presence;
   }
 
   /**
@@ -362,6 +463,7 @@ export class MatchRoom {
         seatToken: seat.seatToken,
         phase: "lobby",
         lobby: this.buildLobbyState(),
+        presence: this.buildPresence(),
       });
     }
   }
@@ -374,7 +476,18 @@ export class MatchRoom {
     }
   }
 
-  private sendSeatSnapshot(connectionId: string): void {
+  private broadcastPlayingExcept(exceptConnectionId: string, events?: string[]): void {
+    if (!this.gameState) return;
+    for (const seat of this.seats) {
+      if (!seat.connectionId || seat.connectionId === exceptConnectionId) continue;
+      this.pushSeatPlaying(seat, events);
+    }
+  }
+
+  private sendSeatSnapshot(
+    connectionId: string,
+    options?: { reclaimed?: boolean },
+  ): void {
     const seat = this.seats.find((s) => s.connectionId === connectionId);
     if (!seat) {
       this.sendError(connectionId, ErrorCode.PLAYER_NOT_FOUND, "Not seated in this room");
@@ -388,13 +501,19 @@ export class MatchRoom {
         seatToken: seat.seatToken,
         phase: "lobby",
         lobby: this.buildLobbyState(),
+        presence: this.buildPresence(),
+        reclaimed: options?.reclaimed,
       });
       return;
     }
-    this.pushSeatPlaying(seat);
+    this.pushSeatPlaying(seat, undefined, options);
   }
 
-  private pushSeatPlaying(seat: SeatBinding, events?: string[]): void {
+  private pushSeatPlaying(
+    seat: SeatBinding,
+    events?: string[],
+    options?: { reclaimed?: boolean },
+  ): void {
     if (!seat.connectionId || !this.gameState) return;
     const view = getPlayerView(
       this.gameState,
@@ -413,6 +532,8 @@ export class MatchRoom {
       view,
       legalActions,
       events,
+      presence: this.buildPresence(),
+      reclaimed: options?.reclaimed,
     });
 
     const force = getForceWindowForSeat(this.gameState, seat.seatId);
@@ -445,7 +566,7 @@ export class MatchRoom {
     });
   }
 
-  /** Schedule heuristic Bot turns for silent-fill seats (no client Bot labels). */
+  /** Schedule heuristic Bot turns for silent-fill + disconnect-hosted seats. */
   private queueBotTurns(): void {
     if (this.botTurnTimer != null) {
       this.clock.clearTimeout(this.botTurnTimer);

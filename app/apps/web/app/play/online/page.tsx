@@ -1,15 +1,22 @@
 "use client";
 
 import type {
+  ForceWindow,
   GameAction,
   LegalAction,
   PlayerView,
   ServerMessage,
 } from "@rs/shared";
+import { DISCONNECT_GRACE_MS } from "@rs/shared";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { MatchClient } from "../../../lib/match-client";
+import {
+  DISCONNECT_HOSTED_HINT,
+  DISCONNECT_RECLAIM_TOAST,
+  disconnectTopBar,
+} from "../../../lib/online-disconnect-copy";
 import {
   clearOnlineSession,
   loadOnlineSession,
@@ -22,6 +29,8 @@ function playerLabel(
   return entry.displayName;
 }
 
+type DisconnectUi = "ok" | "grace" | "hosted";
+
 export default function OnlinePlayPage() {
   const router = useRouter();
   const [view, setView] = useState<PlayerView | null>(null);
@@ -30,7 +39,19 @@ export default function OnlinePlayPage() {
   const [roomCode, setRoomCode] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [phase, setPhase] = useState<string>("connecting");
+  const [disconnectUi, setDisconnectUi] = useState<DisconnectUi>("ok");
+  const [graceLeftSec, setGraceLeftSec] = useState(
+    () => Math.ceil(DISCONNECT_GRACE_MS / 1000),
+  );
+  const [toast, setToast] = useState<string | null>(null);
+  const [forceWindow, setForceWindow] = useState<ForceWindow | null>(null);
   const clientRef = useRef<MatchClient | null>(null);
+  const intentionalCloseRef = useRef(false);
+  const hasViewRef = useRef(false);
+  const graceDeadlineRef = useRef<number | null>(null);
+  const handRef = useRef<HTMLElement | null>(null);
+  const forceRef = useRef<HTMLElement | null>(null);
+  const reconnectTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     const session = loadOnlineSession();
@@ -38,6 +59,38 @@ export default function OnlinePlayPage() {
       setError("没有联机会话，请从大厅重新进入");
       setPhase("error");
       return;
+    }
+    const activeSession = session;
+
+    function clearReconnectLoop(): void {
+      if (reconnectTimerRef.current != null) {
+        clearInterval(reconnectTimerRef.current);
+        reconnectTimerRef.current = null;
+      }
+    }
+
+    function beginLocalDisconnectGrace(): void {
+      const deadline = Date.now() + DISCONNECT_GRACE_MS;
+      graceDeadlineRef.current = deadline;
+      setDisconnectUi("grace");
+      setGraceLeftSec(Math.ceil(DISCONNECT_GRACE_MS / 1000));
+    }
+
+    function focusPlaySurface(): void {
+      const target = forceRef.current ?? handRef.current;
+      target?.scrollIntoView({ behavior: "smooth", block: "center" });
+      target?.focus({ preventScroll: true });
+    }
+
+    function joinWithSession(client: MatchClient): void {
+      client.send({
+        type: "join",
+        mode: "join",
+        roomCode: activeSession.roomCode,
+        displayName: activeSession.displayName,
+        seatToken: activeSession.seatToken,
+        seatCount: 4,
+      });
     }
 
     const client = new MatchClient({
@@ -47,7 +100,7 @@ export default function OnlinePlayPage() {
           return;
         }
         if (message.type === "force") {
-          // Force windows are also reflected in legalActions on view; keep light.
+          setForceWindow(message.window);
           return;
         }
         if (message.type !== "view") return;
@@ -55,6 +108,9 @@ export default function OnlinePlayPage() {
         setSeatId(message.seatId);
         setRoomCode(message.roomCode);
         setPhase(message.phase);
+        setDisconnectUi("ok");
+        graceDeadlineRef.current = null;
+        clearReconnectLoop();
 
         if (message.phase === "lobby" && message.lobby) {
           // Rare: reconnect before start — bounce back to lobby wait
@@ -63,30 +119,74 @@ export default function OnlinePlayPage() {
         }
 
         if (message.view) {
+          hasViewRef.current = true;
           setView(message.view);
         }
         setLegal(message.legalActions ?? []);
+
+        const selfPresence = message.presence?.[message.seatId];
+        if (selfPresence?.hosted) {
+          setDisconnectUi("hosted");
+        }
+
+        if (message.reclaimed) {
+          setToast(DISCONNECT_RECLAIM_TOAST);
+          // Focus hand / forced window after reclaim
+          requestAnimationFrame(() => focusPlaySurface());
+        }
       },
       onOpen: () => {
-        client.send({
-          type: "join",
-          mode: "join",
-          roomCode: session.roomCode,
-          displayName: session.displayName,
-          seatToken: session.seatToken,
-          seatCount: 4,
-        });
+        joinWithSession(client);
       },
-      onError: () => setError("连接中断"),
+      onClose: () => {
+        if (intentionalCloseRef.current) return;
+        beginLocalDisconnectGrace();
+        if (reconnectTimerRef.current == null) {
+          reconnectTimerRef.current = setInterval(() => {
+            if (intentionalCloseRef.current) return;
+            if (client.ready) return;
+            client.connect();
+          }, 2000);
+        }
+      },
+      onError: () => {
+        if (intentionalCloseRef.current) return;
+        // Prefer top-bar UX over scary full-screen; soft status only before first view
+        if (!hasViewRef.current) setError("连接中断");
+      },
     });
     clientRef.current = client;
     client.connect();
 
     return () => {
+      intentionalCloseRef.current = true;
+      clearReconnectLoop();
       client.close();
       clientRef.current = null;
     };
   }, [router]);
+
+  // Local grace countdown while WS is down (i-pple top bar).
+  useEffect(() => {
+    if (disconnectUi !== "grace") return;
+    const id = setInterval(() => {
+      const deadline = graceDeadlineRef.current;
+      if (deadline == null) return;
+      const left = Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
+      setGraceLeftSec(left);
+      if (left <= 0) {
+        setDisconnectUi("hosted");
+      }
+    }, 250);
+    return () => clearInterval(id);
+  }, [disconnectUi]);
+
+  // Auto-dismiss reclaim toast
+  useEffect(() => {
+    if (!toast) return;
+    const id = setTimeout(() => setToast(null), 2800);
+    return () => clearTimeout(id);
+  }, [toast]);
 
   function sendIntent(action: GameAction): void {
     setError(null);
@@ -94,6 +194,7 @@ export default function OnlinePlayPage() {
   }
 
   function leave(): void {
+    intentionalCloseRef.current = true;
     clientRef.current?.send({ type: "leave" });
     clientRef.current?.close();
     clearOnlineSession();
@@ -115,6 +216,12 @@ export default function OnlinePlayPage() {
 
   return (
     <main className="online-play table-shell">
+      {disconnectUi === "grace" ? (
+        <div className="online-disconnect-bar" role="status">
+          {disconnectTopBar(graceLeftSec)}
+        </div>
+      ) : null}
+
       <header className="online-play-bar">
         <div>
           <p className="eyebrow">联机桌</p>
@@ -128,7 +235,21 @@ export default function OnlinePlayPage() {
         </button>
       </header>
 
-      {error ? <p className="inline-error">{error}</p> : null}
+      {disconnectUi === "hosted" ? (
+        <p className="online-hosted-hint" role="status">
+          {DISCONNECT_HOSTED_HINT}
+        </p>
+      ) : null}
+
+      {toast ? (
+        <p className="online-reclaim-toast" role="status">
+          {toast}
+        </p>
+      ) : null}
+
+      {error && disconnectUi === "ok" ? (
+        <p className="inline-error">{error}</p>
+      ) : null}
 
       <div className="card-table online-table">
         <ul className="online-opponents" aria-label="其他座位">
@@ -174,7 +295,23 @@ export default function OnlinePlayPage() {
           )}
         </section>
 
-        <section className="online-hand" aria-label="本座手牌">
+        {forceWindow ? (
+          <section
+            ref={forceRef}
+            className="online-force"
+            tabIndex={-1}
+            aria-label="强制响应窗"
+          >
+            <p className="muted">强制窗 · {forceWindow.kind}</p>
+          </section>
+        ) : null}
+
+        <section
+          ref={handRef}
+          className="online-hand"
+          aria-label="本座手牌"
+          tabIndex={-1}
+        >
           <h2>{self ? self.displayName : "本座"}</h2>
           {self && "hand" in self ? (
             <ul className="online-hand-list">

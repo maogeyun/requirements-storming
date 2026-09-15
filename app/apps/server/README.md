@@ -9,12 +9,20 @@
 | C→S | `join` | `mode`: `create` \| `join` \| `match`；联机固定满 **4** 开局（不可不足开） |
 | C→S | `intent` | `{ action: GameAction }`；非法则 `error` |
 | C→S | `resync` | 重拉本座 `view` + 当前 `force` |
-| C→S | `leave` | 离开；局内仅标记断线（Bot 接管后续） |
-| S→C | `view` | 含 `seatId` / stub `seatToken` / `lobby` 或座位 `view` |
+| C→S | `leave` | 离开；局内走断线 grace → Bot 托管（与 WS close 相同） |
+| S→C | `view` | 含 `seatId` / stub `seatToken` / `lobby` 或座位 `view`；可带 `presence` / `reclaimed` |
 | S→C | `force` | 暗标 / C-13 / C-14 强制窗 |
 | S→C | `error` | 含 `ErrorCode`；非法 intent 带 `rejectedAction` |
 
 鉴权 V1：stub `seatToken`（Steam Session Ticket 后补）。主机不可改规则。开局条件：`seated === 4`（不足拒绝）。
+
+### 断线 / 重连 / 超时托管（i-pple）
+
+- 默认 grace **`DISCONNECT_GRACE_MS = 45_000`**（可在 `MatchRoom` 构造时覆盖）。
+- 局内断线：座位保留；`presence` 下发 `graceRemainingSec`；客户端顶条「连接中断 · N 秒内可回」。
+- Grace 到期：该真人座 `disconnectHosted` → 启发式 Bot 代打（复用 `@rs/rules-engine`）；客户端弱提示「本座已托管」。
+- `seatToken` 重连收回座位：清 grace / hosted；`reclaimed: true` 触发一行 toast + 焦点回手牌/强制窗。
+- `presence.hosted` **仅**用于断线托管；自由匹配静默补位 Bot **永不**标 hosted。
 
 ### 自由匹配（i-pple 不泄锁）
 

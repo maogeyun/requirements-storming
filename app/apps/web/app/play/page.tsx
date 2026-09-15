@@ -371,6 +371,13 @@ export default function PlayShellPage() {
   const infoTipRef = useRef<InfoTip | null>(null);
   const infoTipTimerRef = useRef<number | null>(null);
 
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("mode") === "vs_bot") {
+      setPlayMode("vs_bot");
+    }
+  }, []);
+
   const vsBot = playMode === "vs_bot";
   const currentPlayerId = state ? getCurrentPlayerId(state) : null;
   const botSeatIds = useMemo(() => {

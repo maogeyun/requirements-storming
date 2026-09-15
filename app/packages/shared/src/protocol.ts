@@ -12,6 +12,33 @@ import type { ErrorPayload } from "./errors";
 
 export type RoomPhase = "lobby" | "playing" | "finished";
 
+/**
+ * Online disconnect grace before Bot takeover (i-pple).
+ * Seat retained; reclaim via stub seatToken. Configurable at room construct.
+ */
+export const DISCONNECT_GRACE_MS = 45_000;
+
+export function disconnectGraceRemainingSec(
+  graceUntilMs: number | null | undefined,
+  nowMs: number,
+): number | null {
+  if (graceUntilMs == null) return null;
+  const left = Math.ceil((graceUntilMs - nowMs) / 1000);
+  return left > 0 ? left : 0;
+}
+
+/** Per-seat connection presence for disconnect UX (no seat-scoped secrets). */
+export interface SeatPresence {
+  connected: boolean;
+  /** Remaining reconnect grace seconds; only while disconnected & before hosted */
+  graceRemainingSec: number | null;
+  /**
+   * True after grace expires: human seat under disconnect Bot takeover.
+   * Never set for free-match silent-fill bots (those stay opaque).
+   */
+  hosted: boolean;
+}
+
 /** 房间配置，与 GameConfig 对齐；V1 主机不可改规则，仅服务端默认。 */
 export interface RoomConfig {
   playerCount: number;
@@ -184,6 +211,10 @@ export interface ServerView {
   /** 当前座位可用动作（enabled 过滤前的 listLegalActions 快照可选） */
   legalActions?: LegalAction[];
   events?: string[];
+  /** Per-seat disconnect / grace / hosted flags (i-pple); never leaks hands/OKR */
+  presence?: Record<string, SeatPresence>;
+  /** True on successful seatToken reclaim after disconnect */
+  reclaimed?: boolean;
 }
 
 /** 强制窗推送（与 view 一并或单独下发） */

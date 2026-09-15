@@ -377,6 +377,141 @@ describe("MatchHub free-match silent Bot fill", () => {
   });
 });
 
+describe("MatchRoom disconnect grace / Bot takeover / reclaim", () => {
+  it("disconnect starts grace: seat retained, not hosted, not in botSeatIds", () => {
+    const { inbox, emit } = collectEmit();
+    const clock = createFakeClock();
+    const room = new MatchRoom({
+      roomCode: "GRACE",
+      seed: 42,
+      emit,
+      clock,
+      disconnectGraceMs: 45_000,
+    });
+    fillRoom(room);
+    expect(room.phase).toBe("playing");
+
+    const seat = room.seats.find((s) => s.connectionId === "c1")!;
+    const token = seat.seatToken;
+    const seatId = seat.seatId;
+
+    inbox.clear();
+    room.onDisconnect("c1");
+
+    expect(seat.connected).toBe(false);
+    expect(seat.connectionId).toBeNull();
+    expect(seat.disconnectHosted).toBe(false);
+    expect(seat.disconnectGraceUntil).toBe(45_000);
+    expect(room.botSeatIds()).not.toContain(seatId);
+    expect(room.seats).toHaveLength(4);
+    expect(seat.seatToken).toBe(token);
+
+    const presence = room.buildPresence();
+    expect(presence[seatId]?.connected).toBe(false);
+    expect(presence[seatId]?.hosted).toBe(false);
+    expect(presence[seatId]?.graceRemainingSec).toBe(45);
+
+    // Others still connected receive presence update
+    const forP2 = inbox.get("c2") ?? [];
+    const view = forP2.find((m) => m.type === "view");
+    expect(view?.type === "view" && view.presence?.[seatId]?.graceRemainingSec).toBe(45);
+  });
+
+  it("after grace timeout: disconnectHosted and Bot acts on that seat", () => {
+    const { emit } = collectEmit();
+    const clock = createFakeClock();
+    const room = new MatchRoom({
+      roomCode: "HOST",
+      seed: 42,
+      emit,
+      clock,
+      disconnectGraceMs: 45_000,
+    });
+    fillRoom(room);
+
+    const p1 = room.seats.find((s) => s.connectionId === "c1")!;
+    expect(room.gameState!.players[room.gameState!.currentPlayerIndex]?.id).toBe(
+      p1.seatId,
+    );
+    expect(room.gameState!.turnPhase).toBe("draw");
+    expect(room.gameState!.eventFlippedThisRound).toBe(false);
+
+    room.onDisconnect("c1");
+    clock.tick(44_999);
+    expect(p1.disconnectHosted).toBe(false);
+    expect(room.gameState!.eventFlippedThisRound).toBe(false);
+
+    clock.tick(1); // grace fires → hosted → queueBotTurns(0)
+    expect(p1.disconnectHosted).toBe(true);
+    expect(room.botSeatIds()).toContain(p1.seatId);
+    // Bot should have flipped (and possibly more) for current seat
+    expect(room.gameState!.eventFlippedThisRound).toBe(true);
+
+    const presence = room.buildPresence();
+    expect(presence[p1.seatId]?.hosted).toBe(true);
+    expect(presence[p1.seatId]?.graceRemainingSec).toBeNull();
+  });
+
+  it("reconnect with seatToken reclaims seat and clears hosted", () => {
+    const { inbox, emit } = collectEmit();
+    const clock = createFakeClock();
+    const room = new MatchRoom({
+      roomCode: "RECL",
+      seed: 42,
+      emit,
+      clock,
+      disconnectGraceMs: 1_000,
+    });
+    fillRoom(room);
+
+    const seat = room.seats.find((s) => s.connectionId === "c2")!;
+    const token = seat.seatToken;
+    const name = seat.displayName;
+
+    room.onDisconnect("c2");
+    clock.tick(1_000);
+    expect(seat.disconnectHosted).toBe(true);
+
+    inbox.clear();
+    room.handleMessage("c2-new", {
+      type: "join",
+      mode: "join",
+      roomCode: "RECL",
+      displayName: name,
+      seatToken: token,
+      seatCount: 4,
+    });
+
+    expect(seat.connected).toBe(true);
+    expect(seat.connectionId).toBe("c2-new");
+    expect(seat.disconnectHosted).toBe(false);
+    expect(seat.disconnectGraceUntil).toBeNull();
+    expect(room.botSeatIds()).not.toContain(seat.seatId);
+
+    const msgs = inbox.get("c2-new") ?? [];
+    const snap = msgs.find((m) => m.type === "view");
+    expect(snap?.type === "view" && snap.reclaimed).toBe(true);
+    expect(snap?.type === "view" && snap.presence?.[seat.seatId]?.hosted).toBe(false);
+    expect(snap?.type === "view" && snap.presence?.[seat.seatId]?.connected).toBe(true);
+  });
+
+  it("silent-fill Bot seats never report hosted in presence", () => {
+    const { emit } = collectEmit();
+    const clock = createFakeClock();
+    const room = new MatchRoom({ roomCode: "SIL", seed: 1, emit, clock });
+    room.handleMessage("h1", { type: "join", mode: "create", displayName: "Host" });
+    room.fillSilentBots(pickFakeDisplayNames(3, new Set(["Host"])));
+    expect(room.phase).toBe("playing");
+
+    const presence = room.buildPresence();
+    for (const seat of room.seats) {
+      if (!seat.isBot) continue;
+      expect(presence[seat.seatId]?.hosted).toBe(false);
+      expect(presence[seat.seatId]?.connected).toBe(true);
+    }
+  });
+});
+
 describe("applyAction smoke after legal gate", () => {
   it("legal intent advances draw→plan after flip+draw", () => {
     const state = createGame({ playerNames: ["A", "B"], seed: 11 });

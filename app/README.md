@@ -84,7 +84,8 @@ pnpm dev:web      # Next.js @ localhost:3000
 
 - [x] 联机 intent 校验链（listLegalActions → applyAction）骨架
 - [ ] 大厅 / 牌桌 UI
-- [ ] 暗标 reveal 时序、断线重连 / Bot 接管
+- [ ] 暗标 reveal 时序
+- [x] 断线重连 / Bot 接管（grace 45s + seatToken reclaim；自由匹配不泄 Bot）
 
 ## M1 可玩壳
 

@@ -1,4 +1,4 @@
-/** Injectable clock for match queue timers (60s Bot fill) and bot auto-play. */
+/** Injectable clock for match queue, disconnect grace, and bot auto-play. */
 export interface MatchClock {
   now(): number;
   setTimeout(fn: () => void, ms: number): unknown;

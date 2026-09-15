@@ -354,6 +354,17 @@ function mvpName(state: GameState): string {
   return best.displayName;
 }
 
+/** Busy 64:2 surround-table slots — opponents circle the felt, not a top strip. */
+type RingSlot = "left" | "top" | "top-left" | "top-right" | "right";
+
+function opponentRingSlots(count: number): RingSlot[] {
+  if (count <= 0) return [];
+  if (count === 1) return ["top"];
+  if (count === 2) return ["left", "right"];
+  if (count === 3) return ["left", "top", "right"];
+  return ["left", "top-left", "top-right", "right"];
+}
+
 export default function PlayShellPage() {
   const [screen, setScreen] = useState<Screen>("setup");
   const [playMode, setPlayMode] = useState<PlayMode>("local");
@@ -872,6 +883,7 @@ export default function PlayShellPage() {
   /** 本座在下；其余座位对面上条 — 卡牌桌空间 */
   const localSeatId = vsBot ? humanSeat : activeSeat;
   const opponents = state.players.filter((p) => p.id !== localSeatId);
+  const opponentSlots = opponentRingSlots(opponents.length);
   const localPlayer = state.players.find((p) => p.id === localSeatId) ?? activePlayer;
   const selfOkr = localPlayer.okrId ? getOkrCard(localPlayer.okrId) : undefined;
   const selfOkrSettlement =
@@ -893,7 +905,7 @@ export default function PlayShellPage() {
         if (!target) return;
         if (
           target.closest(
-            ".hand-card, .corner-ops, .local-okr-card, .hand-confirm-rail, .forced-window, .settlement-layer, .target-row, .stage-card, .table-detail-layer, .seat-chip, .demo-drawer, .log-drawer, .phase-bar, .hand-head, .opponents-strip, .perf-bar-overlay, .mid-ritual-board",
+            ".hand-card, .corner-ops, .local-okr-card, .hand-confirm-rail, .forced-window, .settlement-layer, .target-row, .stage-card, .table-detail-layer, .seat-chip, .demo-drawer, .log-drawer, .phase-bar, .hand-head, .seat-ring, .perf-bar-overlay, .mid-ritual-board",
           )
         ) {
           return;
@@ -1100,65 +1112,74 @@ export default function PlayShellPage() {
         )}
       </header>
 
-      {/* 2. Upper — 对面上条：他座 1–3 横向芯片（禁大卡） */}
-      <section className="opponents-strip" aria-label="对面座位">
-        {opponents.map((p) => {
-          const isBot = vsBot && p.id !== humanSeat;
-          const isTurn = p.id === currentPlayerId;
-          const debtPressure = p.personalDebt > 0 || p.personalBugs > 0;
-          const canSwitchSeat = !vsBot;
-          return (
-            <div
-              key={p.id}
-              className={`seat-chip facing ${isTurn ? "turn" : ""} ${isBot ? "bot" : ""} ${
-                canSwitchSeat ? "switchable" : ""
-              }`}
-              role={canSwitchSeat ? "button" : "group"}
-              tabIndex={canSwitchSeat ? 0 : undefined}
-              onClick={() => {
-                if (canSwitchSeat) {
-                  setActiveSeat(p.id);
-                  clearCardSelection();
-                }
-              }}
-              onKeyDown={(e) => {
-                if (!canSwitchSeat) return;
-                if (e.key === "Enter" || e.key === " ") {
-                  e.preventDefault();
-                  setActiveSeat(p.id);
-                  clearCardSelection();
-                }
-              }}
-            >
-              <span className="seat-color" aria-hidden />
-              <span className="seat-facing-name">
-                {p.displayName}
-                {isBot ? <span className="bot-tag"> Bot</span> : null}
-              </span>
-              <button
-                type="button"
-                className="seat-facing-stat perf-hit"
-                title="查看绩效条"
-                aria-label={`${p.displayName} 绩效 ${p.performance}，打开绩效条`}
-                onClick={openPerfBar}
+      {/* 2–3. Seat ring around felt table (Busy 64:2) — upper opponents + mid battlefield */}
+      <section className="seat-ring" aria-label="座位环">
+        <div className="seat-ring-arena">
+          {opponents.map((p, index) => {
+            const isBot = vsBot && p.id !== humanSeat;
+            const isTurn = p.id === currentPlayerId;
+            const debtPressure = p.personalDebt > 0 || p.personalBugs > 0;
+            const canSwitchSeat = !vsBot;
+            const slot = opponentSlots[index] ?? "top";
+            return (
+              <div
+                key={p.id}
+                className={`seat-chip ring-seat slot-${slot} ${isTurn ? "turn" : ""} ${
+                  isBot ? "bot" : ""
+                } ${canSwitchSeat ? "switchable" : ""}`}
+                role={canSwitchSeat ? "button" : "group"}
+                tabIndex={canSwitchSeat ? 0 : undefined}
+                onClick={() => {
+                  if (canSwitchSeat) {
+                    setActiveSeat(p.id);
+                    clearCardSelection();
+                  }
+                }}
+                onKeyDown={(e) => {
+                  if (!canSwitchSeat) return;
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    setActiveSeat(p.id);
+                    clearCardSelection();
+                  }
+                }}
               >
-                绩 {p.performance}
-              </button>
-              <span className="seat-facing-stat">手 {p.hand.length}</span>
-              <span className={`seat-facing-stat ${debtPressure ? "pressure" : ""}`}>
-                债{p.personalDebt}/Bug{p.personalBugs}
-              </span>
-              <span className="seat-facing-okr" title="他座 OKR 不可窥">
-                已抽取 · 结算亮牌
-              </span>
-              {isTurn ? <span className="seat-facing-turn">行动中</span> : null}
-            </div>
-          );
-        })}
-      </section>
+                <div className="seat-chip-head">
+                  <span className="seat-color" aria-hidden />
+                  <div className="seat-titles">
+                    <strong>
+                      {p.displayName}
+                      {isBot ? <span className="bot-tag"> Bot</span> : null}
+                    </strong>
+                    <span className="seat-status">
+                      {isTurn ? "行动中" : "已入座"}
+                    </span>
+                  </div>
+                </div>
+                <div className="seat-stats">
+                  <button
+                    type="button"
+                    className="perf-hit"
+                    title="查看绩效条"
+                    aria-label={`${p.displayName} 绩效 ${p.performance}，打开绩效条`}
+                    onClick={openPerfBar}
+                  >
+                    绩 {p.performance}
+                  </button>
+                  <span>手 {p.hand.length}</span>
+                  <span className={debtPressure ? "pressure" : undefined}>
+                    债{p.personalDebt}/Bug{p.personalBugs}
+                  </span>
+                </div>
+                <span className="seat-okr locked" title="他座 OKR 不可窥">
+                  已抽取 · 结算亮牌
+                </span>
+              </div>
+            );
+          })}
 
-      {/* 3. Center battlefield — 进度轨 + 三槽放大 */}
-      <section className="table-center" aria-label="桌心公共区">
+          {/* Mid battlefield — 进度轨 + 三槽放大 */}
+          <section className="table-center" aria-label="桌心公共区">
         <div className="series-line">{seriesProgressCopy(state)}</div>
 
         <div className="progress-block">
@@ -1449,6 +1470,8 @@ export default function PlayShellPage() {
             </button>
           </div>
         )}
+          </section>
+        </div>
       </section>
 
       {/* 4. Bottom — 左 OKR 竖卡 · 中手牌扇 · 右下仅钉工时/结束 */}

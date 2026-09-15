@@ -18,6 +18,11 @@ import {
   disconnectTopBar,
 } from "../../../lib/online-disconnect-copy";
 import {
+  anchorDisconnectGraceDeadline,
+  deadlineFromServerGraceRemainingSec,
+  graceSecondsLeft,
+} from "../../../lib/online-disconnect-grace";
+import {
   clearOnlineSession,
   loadOnlineSession,
 } from "../../../lib/online-session";
@@ -70,10 +75,21 @@ export default function OnlinePlayPage() {
     }
 
     function beginLocalDisconnectGrace(): void {
-      const deadline = Date.now() + DISCONNECT_GRACE_MS;
+      const now = Date.now();
+      // Anchor once per disconnect episode — failed reconnect onClose must not reset.
+      const deadline = anchorDisconnectGraceDeadline(
+        graceDeadlineRef.current,
+        now,
+      );
       graceDeadlineRef.current = deadline;
+      const left = graceSecondsLeft(deadline, now);
+      if (left <= 0) {
+        setGraceLeftSec(0);
+        setDisconnectUi("hosted");
+        return;
+      }
       setDisconnectUi("grace");
-      setGraceLeftSec(Math.ceil(DISCONNECT_GRACE_MS / 1000));
+      setGraceLeftSec(left);
     }
 
     function focusPlaySurface(): void {
@@ -108,12 +124,12 @@ export default function OnlinePlayPage() {
         setSeatId(message.seatId);
         setRoomCode(message.roomCode);
         setPhase(message.phase);
-        setDisconnectUi("ok");
-        graceDeadlineRef.current = null;
         clearReconnectLoop();
 
         if (message.phase === "lobby" && message.lobby) {
           // Rare: reconnect before start — bounce back to lobby wait
+          graceDeadlineRef.current = null;
+          setDisconnectUi("ok");
           router.replace(`/lobby?mode=join&code=${message.roomCode}`);
           return;
         }
@@ -126,7 +142,26 @@ export default function OnlinePlayPage() {
 
         const selfPresence = message.presence?.[message.seatId];
         if (selfPresence?.hosted) {
+          graceDeadlineRef.current = null;
           setDisconnectUi("hosted");
+        } else if (
+          selfPresence &&
+          !selfPresence.connected &&
+          selfPresence.graceRemainingSec != null &&
+          selfPresence.graceRemainingSec > 0
+        ) {
+          // Align local bar with server mid-grace when presence is available
+          const now = Date.now();
+          graceDeadlineRef.current = deadlineFromServerGraceRemainingSec(
+            selfPresence.graceRemainingSec,
+            now,
+          );
+          setDisconnectUi("grace");
+          setGraceLeftSec(selfPresence.graceRemainingSec);
+        } else {
+          // Reconnected / reclaimed — end disconnect episode
+          graceDeadlineRef.current = null;
+          setDisconnectUi("ok");
         }
 
         if (message.reclaimed) {
@@ -172,7 +207,7 @@ export default function OnlinePlayPage() {
     const id = setInterval(() => {
       const deadline = graceDeadlineRef.current;
       if (deadline == null) return;
-      const left = Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
+      const left = graceSecondsLeft(deadline, Date.now());
       setGraceLeftSec(left);
       if (left <= 0) {
         setDisconnectUi("hosted");

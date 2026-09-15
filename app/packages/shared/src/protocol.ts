@@ -32,7 +32,7 @@ export interface LobbyState {
   phase: "lobby";
   roomCode: string;
   hostId: string;
-  /** 目标座位数（2–4） */
+  /** 目标座位数：联机固定 4（满员才开局） */
   seatCount: number;
   config: RoomConfig;
   players: LobbyPlayer[];
@@ -121,7 +121,10 @@ export interface ClientJoin {
   displayName: string;
   /** 重连时带回；首次加入可省略，由服务端签发 stub */
   seatToken?: string;
-  /** create 时目标座位数，默认 4，范围 2–4 */
+  /**
+   * 可选；联机固定满 4 开局。若传入且 !== 4，服务端拒绝。
+   * 主机不可改规则 / 不可不足人数开局。
+   */
   seatCount?: number;
 }
 

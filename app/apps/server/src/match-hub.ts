@@ -112,7 +112,6 @@ export class MatchHub {
       const code = generateRoomCode(new Set(this.rooms.keys()));
       const room = new MatchRoom({
         roomCode: code,
-        seatCount: message.seatCount,
         seed: this.seed,
         emit: this.emit,
       });
@@ -172,7 +171,6 @@ export class MatchHub {
       const code = generateRoomCode(new Set(this.rooms.keys()));
       const room = new MatchRoom({
         roomCode: code,
-        seatCount: 4,
         seed: this.seed,
         emit: this.emit,
       });
@@ -188,7 +186,7 @@ export class MatchHub {
         });
       }
     }
-    // Spec has no "queued" frame — stay silent until the 4-seat room forms.
+    // Spec has no "queued" frame — stay silent until exactly 4 seats fill.
   }
 
   private removeFromMatchQueue(connectionId: string): void {

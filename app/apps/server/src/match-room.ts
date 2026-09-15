@@ -30,16 +30,13 @@ export interface SeatBinding {
   isHost: boolean;
 }
 
+/** 联机房间固定满 4 开局（老乔确认：不可不足开局）。 */
+export const REQUIRED_SEAT_COUNT = 4;
+
 export interface MatchRoomOptions {
   roomCode: string;
-  seatCount?: number;
   seed?: number;
   emit: EmitFn;
-}
-
-function clampSeatCount(n: number | undefined): number {
-  if (n == null || Number.isNaN(n)) return 4;
-  return Math.min(4, Math.max(2, Math.floor(n)));
 }
 
 function newSeatToken(): string {
@@ -48,7 +45,7 @@ function newSeatToken(): string {
 
 export class MatchRoom {
   readonly roomCode: string;
-  readonly seatCount: number;
+  readonly seatCount = REQUIRED_SEAT_COUNT;
   readonly config: RoomConfig;
   phase: RoomPhase = "lobby";
   seats: SeatBinding[] = [];
@@ -58,8 +55,7 @@ export class MatchRoom {
 
   constructor(options: MatchRoomOptions) {
     this.roomCode = options.roomCode;
-    this.seatCount = clampSeatCount(options.seatCount);
-    this.config = getDefaultRoomConfig(this.seatCount);
+    this.config = getDefaultRoomConfig(REQUIRED_SEAT_COUNT);
     this.seed = options.seed;
     this.emit = options.emit;
   }
@@ -106,6 +102,16 @@ export class MatchRoom {
       return;
     }
 
+    // 主机不可改规则；座位数固定 4。客户端若传 seatCount 且非 4 → 拒绝。
+    if (message.seatCount != null && message.seatCount !== REQUIRED_SEAT_COUNT) {
+      this.sendError(
+        connectionId,
+        ErrorCode.INVALID_MESSAGE,
+        `Online rooms require exactly ${REQUIRED_SEAT_COUNT} seats`,
+      );
+      return;
+    }
+
     // Reconnect via stub seatToken
     if (message.seatToken) {
       const existing = this.seats.find((s) => s.seatToken === message.seatToken);
@@ -128,7 +134,7 @@ export class MatchRoom {
       return;
     }
 
-    if (this.seats.length >= this.seatCount) {
+    if (this.seats.length >= REQUIRED_SEAT_COUNT) {
       this.sendError(connectionId, ErrorCode.ROOM_FULL, "Room is full");
       return;
     }
@@ -145,19 +151,48 @@ export class MatchRoom {
     this.seats.push(seat);
     this.broadcastLobby();
 
-    if (this.seats.length >= this.seatCount) {
+    if (this.seats.length === REQUIRED_SEAT_COUNT) {
       this.startGame();
     }
   }
 
+  /**
+   * 仅当 seated === 4 时开局。不足 4 拒绝（含任何主机提前开局路径）。
+   * @returns false 表示未开局（人数不足或已开）
+   */
+  tryStartGame(connectionId?: string): boolean {
+    if (this.phase !== "lobby") {
+      if (connectionId) {
+        this.sendError(connectionId, ErrorCode.GAME_ALREADY_STARTED, "Game already started");
+      }
+      return false;
+    }
+    if (this.seats.length !== REQUIRED_SEAT_COUNT) {
+      if (connectionId) {
+        this.sendError(
+          connectionId,
+          ErrorCode.INSUFFICIENT_PLAYERS,
+          `Need exactly ${REQUIRED_SEAT_COUNT} players to start`,
+        );
+      }
+      return false;
+    }
+    this.startGame();
+    return this.gameState != null;
+  }
+
   private startGame(): void {
-    if (this.phase !== "lobby" || this.seats.length < 2) return;
+    if (this.phase !== "lobby") return;
+    if (this.seats.length !== REQUIRED_SEAT_COUNT) {
+      // 防御：不允许不足 4 人开局（含主机提前开）
+      return;
+    }
 
     const gameState = createGame({
       playerNames: this.seats.map((s) => s.displayName),
       config: roomConfigToGameConfig({
         ...this.config,
-        playerCount: this.seats.length,
+        playerCount: REQUIRED_SEAT_COUNT,
       }),
       seed: this.seed,
     });

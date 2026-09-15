@@ -3,7 +3,7 @@ import type { ServerMessage } from "@rs/shared";
 import { ErrorCode } from "@rs/shared";
 import { isLegalIntent } from "./intent";
 import { MatchHub } from "./match-hub";
-import { MatchRoom } from "./match-room";
+import { MatchRoom, REQUIRED_SEAT_COUNT } from "./match-room";
 import { getForceWindowForSeat, getPlayerView } from "./player-view";
 import { applyAction, createGame, forceCatchUpProgressAttempt, listLegalActions } from "@rs/rules-engine";
 
@@ -15,6 +15,17 @@ function collectEmit() {
     inbox.set(connectionId, list);
   };
   return { inbox, emit };
+}
+
+function fillRoom(room: MatchRoom, names = ["A", "B", "C", "D"]): void {
+  names.forEach((name, i) => {
+    room.handleMessage(`c${i + 1}`, {
+      type: "join",
+      mode: i === 0 ? "create" : "join",
+      roomCode: room.roomCode,
+      displayName: name,
+    });
+  });
 }
 
 describe("isLegalIntent", () => {
@@ -70,28 +81,65 @@ describe("getPlayerView seat scoping", () => {
   });
 });
 
+describe("MatchRoom full-4 start lock", () => {
+  it("stays in lobby under 4 and rejects host tryStartGame", () => {
+    const { inbox, emit } = collectEmit();
+    const room = new MatchRoom({ roomCode: "WAIT", seed: 1, emit });
+
+    room.handleMessage("c1", {
+      type: "join",
+      mode: "create",
+      displayName: "Host",
+    });
+    room.handleMessage("c2", {
+      type: "join",
+      mode: "join",
+      roomCode: "WAIT",
+      displayName: "B",
+    });
+    expect(room.phase).toBe("lobby");
+    expect(room.seats).toHaveLength(2);
+
+    inbox.clear();
+    expect(room.tryStartGame("c1")).toBe(false);
+    expect(room.phase).toBe("lobby");
+    const err = (inbox.get("c1") ?? []).find((m) => m.type === "error");
+    expect(err?.type === "error" && err.error.code).toBe(ErrorCode.INSUFFICIENT_PLAYERS);
+  });
+
+  it("rejects seatCount other than 4", () => {
+    const { inbox, emit } = collectEmit();
+    const room = new MatchRoom({ roomCode: "BAD", seed: 1, emit });
+    room.handleMessage("c1", {
+      type: "join",
+      mode: "create",
+      displayName: "Host",
+      seatCount: 2,
+    });
+    expect(room.seats).toHaveLength(0);
+    const err = (inbox.get("c1") ?? []).find((m) => m.type === "error");
+    expect(err?.type === "error" && err.error.code).toBe(ErrorCode.INVALID_MESSAGE);
+  });
+
+  it("starts only when seated count === 4", () => {
+    const { emit } = collectEmit();
+    const room = new MatchRoom({ roomCode: "FULL", seed: 42, emit });
+    fillRoom(room);
+    expect(room.seatCount).toBe(REQUIRED_SEAT_COUNT);
+    expect(room.phase).toBe("playing");
+    expect(room.gameState?.players).toHaveLength(4);
+  });
+});
+
 describe("MatchRoom intent validation", () => {
   it("rejects illegal intent and accepts legal FLIP_EVENT", () => {
     const { inbox, emit } = collectEmit();
     const room = new MatchRoom({
       roomCode: "TEST1",
-      seatCount: 2,
       seed: 42,
       emit,
     });
-
-    room.handleMessage("c1", {
-      type: "join",
-      mode: "create",
-      displayName: "Alice",
-      seatCount: 2,
-    });
-    room.handleMessage("c2", {
-      type: "join",
-      mode: "join",
-      roomCode: "TEST1",
-      displayName: "Bob",
-    });
+    fillRoom(room, ["Alice", "Bob", "Carol", "Dave"]);
 
     expect(room.phase).toBe("playing");
     expect(room.gameState).not.toBeNull();
@@ -126,25 +174,10 @@ describe("MatchRoom intent validation", () => {
     const { inbox, emit } = collectEmit();
     const room = new MatchRoom({
       roomCode: "FORCE",
-      seatCount: 4,
       seed: 77,
       emit,
     });
-    // Override config modules via starting a 4p room then mutating state
-    for (const [cid, name] of [
-      ["c1", "A"],
-      ["c2", "B"],
-      ["c3", "C"],
-      ["c4", "D"],
-    ] as const) {
-      room.handleMessage(cid, {
-        type: "join",
-        mode: cid === "c1" ? "create" : "join",
-        roomCode: "FORCE",
-        displayName: name,
-        seatCount: 4,
-      });
-    }
+    fillRoom(room);
 
     expect(room.phase).toBe("playing");
     room.gameState!.config.modules.continuousSprint = true;
@@ -164,7 +197,7 @@ describe("MatchRoom intent validation", () => {
 });
 
 describe("MatchHub create/join", () => {
-  it("creates a room code and lets a second client join", () => {
+  it("creates a room and starts only after the 4th join", () => {
     const { inbox, emit } = collectEmit();
     const hub = new MatchHub(emit, { seed: 99 });
 
@@ -174,7 +207,6 @@ describe("MatchHub create/join", () => {
         type: "join",
         mode: "create",
         displayName: "Host",
-        seatCount: 2,
       }),
     );
 
@@ -184,6 +216,7 @@ describe("MatchHub create/join", () => {
     if (hostView?.type !== "view") return;
     const code = hostView.roomCode;
     expect(code.length).toBeGreaterThanOrEqual(4);
+    expect(hub.rooms.get(code)?.phase).toBe("lobby");
 
     hub.handleMessage(
       "c2",
@@ -191,12 +224,33 @@ describe("MatchHub create/join", () => {
         type: "join",
         mode: "join",
         roomCode: code,
-        displayName: "Guest",
+        displayName: "B",
+      }),
+    );
+    expect(hub.rooms.get(code)?.phase).toBe("lobby");
+
+    hub.handleMessage(
+      "c3",
+      JSON.stringify({
+        type: "join",
+        mode: "join",
+        roomCode: code,
+        displayName: "C",
+      }),
+    );
+    hub.handleMessage(
+      "c4",
+      JSON.stringify({
+        type: "join",
+        mode: "join",
+        roomCode: code,
+        displayName: "D",
       }),
     );
 
     const room = hub.rooms.get(code);
     expect(room?.phase).toBe("playing");
+    expect(room?.seats).toHaveLength(4);
   });
 });
 

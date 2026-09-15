@@ -11,7 +11,7 @@ import type {
   SelfPlayerView,
 } from "@rs/shared";
 
-/** V1 主机不可改规则：固定默认模块与人数由房间 seatCount 决定。 */
+/** V1 主机不可改规则：固定默认模块；联机人数固定 4。 */
 export function getDefaultRoomConfig(playerCount = 4): RoomConfig {
   return {
     playerCount,

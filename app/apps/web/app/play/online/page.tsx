@@ -18,6 +18,12 @@ import {
   disconnectTopBar,
 } from "../../../lib/online-disconnect-copy";
 import {
+  anchorDisconnectGraceDeadline,
+  disconnectDisplayFromPresence,
+  graceSecondsLeft,
+  syncDisplayDeadlineFromServerRemaining,
+} from "../../../lib/online-disconnect-grace";
+import {
   clearOnlineSession,
   loadOnlineSession,
 } from "../../../lib/online-session";
@@ -70,10 +76,22 @@ export default function OnlinePlayPage() {
     }
 
     function beginLocalDisconnectGrace(): void {
-      const deadline = Date.now() + DISCONNECT_GRACE_MS;
+      const now = Date.now();
+      // Display-only fallback while offline. Server grace is authoritative;
+      // never reset/fake-extend on repeated reconnect onClose (JOJO P2).
+      const deadline = anchorDisconnectGraceDeadline(
+        graceDeadlineRef.current,
+        now,
+      );
       graceDeadlineRef.current = deadline;
+      const left = graceSecondsLeft(deadline, now);
+      if (left <= 0) {
+        setGraceLeftSec(0);
+        setDisconnectUi("hosted");
+        return;
+      }
       setDisconnectUi("grace");
-      setGraceLeftSec(Math.ceil(DISCONNECT_GRACE_MS / 1000));
+      setGraceLeftSec(left);
     }
 
     function focusPlaySurface(): void {
@@ -108,12 +126,12 @@ export default function OnlinePlayPage() {
         setSeatId(message.seatId);
         setRoomCode(message.roomCode);
         setPhase(message.phase);
-        setDisconnectUi("ok");
-        graceDeadlineRef.current = null;
         clearReconnectLoop();
 
         if (message.phase === "lobby" && message.lobby) {
           // Rare: reconnect before start — bounce back to lobby wait
+          graceDeadlineRef.current = null;
+          setDisconnectUi("ok");
           router.replace(`/lobby?mode=join&code=${message.roomCode}`);
           return;
         }
@@ -124,9 +142,24 @@ export default function OnlinePlayPage() {
         }
         setLegal(message.legalActions ?? []);
 
-        const selfPresence = message.presence?.[message.seatId];
-        if (selfPresence?.hosted) {
+        // Server presence wins the bar; local deadline is only an offline paint.
+        const display = disconnectDisplayFromPresence(
+          message.presence?.[message.seatId],
+        );
+        if (display.kind === "grace") {
+          graceDeadlineRef.current = syncDisplayDeadlineFromServerRemaining(
+            display.remainingSec,
+            Date.now(),
+          );
+          setDisconnectUi("grace");
+          setGraceLeftSec(display.remainingSec);
+        } else if (display.kind === "hosted") {
+          graceDeadlineRef.current = null;
           setDisconnectUi("hosted");
+        } else {
+          // Reconnected / reclaimed — end disconnect episode
+          graceDeadlineRef.current = null;
+          setDisconnectUi("ok");
         }
 
         if (message.reclaimed) {
@@ -166,13 +199,13 @@ export default function OnlinePlayPage() {
     };
   }, [router]);
 
-  // Local grace countdown while WS is down (i-pple top bar).
+  // Display-only countdown while offline (server grace remains authoritative).
   useEffect(() => {
     if (disconnectUi !== "grace") return;
     const id = setInterval(() => {
       const deadline = graceDeadlineRef.current;
       if (deadline == null) return;
-      const left = Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
+      const left = graceSecondsLeft(deadline, Date.now());
       setGraceLeftSec(left);
       if (left <= 0) {
         setDisconnectUi("hosted");

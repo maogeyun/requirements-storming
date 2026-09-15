@@ -54,8 +54,10 @@ import {
   sprintSwitchInfoOpen,
   sprintSwitchKey,
   tipFromForcedTransition,
+  tipFromSettlementTransition,
   type ForcedWindowKind,
   type InfoTip,
+  type SettlementKind,
 } from "./overlay-policy";
 
 const PHASES: TurnPhase[] = ["draw", "plan", "execute", "end"];
@@ -365,6 +367,7 @@ export default function PlayShellPage() {
   const prevForcedRef = useRef<ForcedWindowKind | undefined>(undefined);
   const prevSprintSwitchKeyRef = useRef<string | null>(null);
   const prevSettlementKeyRef = useRef<string | null>(null);
+  const prevSettlementKindRef = useRef<SettlementKind | undefined>(undefined);
   const infoTipRef = useRef<InfoTip | null>(null);
   const infoTipTimerRef = useRef<number | null>(null);
 
@@ -723,6 +726,7 @@ export default function PlayShellPage() {
       prevForcedRef.current = undefined;
       prevSprintSwitchKeyRef.current = null;
       prevSettlementKeyRef.current = null;
+      prevSettlementKindRef.current = undefined;
       return;
     }
 
@@ -733,6 +737,10 @@ export default function PlayShellPage() {
     const nextForced = detectForcedWindow(state);
     const prevForced = prevForcedRef.current;
     prevForcedRef.current = nextForced;
+
+    const nextSettlementKind = settlementKind;
+    const prevSettlementKind = prevSettlementKindRef.current;
+    prevSettlementKindRef.current = nextSettlementKind;
 
     const currentSprintKey = state.sprintSwitchInfo ? sprintSwitchKey(state) : null;
     const currentSettlementKey =
@@ -770,8 +778,10 @@ export default function PlayShellPage() {
     prevSettlementKeyRef.current = currentSettlementKey;
 
     const now = Date.now();
-    // 强制窗刚结束 → reveal tip（同帧在清旧 tip 之后挂上；下一 commit 会立刻清）
-    const nextTip = tipFromForcedTransition(prevForced, nextForced, now);
+    // 强制窗刚结束 / season_end 候选板出现 → reveal tip（清旧 tip 之后挂上；下一 commit 立刻清）
+    const nextTip =
+      tipFromForcedTransition(prevForced, nextForced, now) ??
+      tipFromSettlementTransition(prevSettlementKind, nextSettlementKind, now);
     if (nextTip) {
       infoTipRef.current = nextTip;
       setInfoTip(nextTip);

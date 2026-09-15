@@ -44,6 +44,19 @@ import {
   playVariantKey,
   type TableDetailKind,
 } from "./card-ui";
+import {
+  canTimerDismissInfoTip,
+  detectForcedWindow,
+  detectSettlement,
+  settlementKeyFor,
+  settlementNeedsAction,
+  shouldAutoDismissSettlement,
+  sprintSwitchInfoOpen,
+  sprintSwitchKey,
+  tipFromForcedTransition,
+  type ForcedWindowKind,
+  type InfoTip,
+} from "./overlay-policy";
 
 const PHASES: TurnPhase[] = ["draw", "plan", "execute", "end"];
 const PHASE_LABEL: Record<TurnPhase, string> = {
@@ -59,11 +72,6 @@ type Screen = "setup" | "play";
 
 /** 本地多人 = 座位轮流操作；人机 = 本座真人 + 其余 Bot */
 type PlayMode = "local" | "vs_bot";
-
-/** 相位条三类互斥、不可跳过强制窗 */
-type ForcedWindowKind = "catch_up_dark_bid" | "c14" | "sprint_switch" | null;
-
-type SettlementKind = "cross_line" | "okr_reveal" | "season_end" | null;
 
 type PerfRankRow = {
   rank: number;
@@ -170,45 +178,6 @@ function darkBidZoneCopy(state: GameState): {
   return { status: "active", label: "暗标进行中" };
 }
 
-function detectForcedWindow(
-  state: GameState,
-  sprintSwitchAckedKey: string | null,
-): ForcedWindowKind {
-  const interaction = state.pendingInteraction;
-  if (interaction?.type === "C14") return "c14";
-
-  const pending = state.pendingDarkBid;
-  if (pending && !pending.resolved) {
-    return "catch_up_dark_bid";
-  }
-
-  if (state.sprintSwitchInfo) {
-    const key = sprintSwitchKey(state);
-    if (key !== sprintSwitchAckedKey) return "sprint_switch";
-  }
-
-  return null;
-}
-
-function sprintSwitchKey(state: GameState): string {
-  const info = state.sprintSwitchInfo;
-  if (!info) return "";
-  return `${info.fromSprint}->${info.toSprint}:${info.nextRequirementId}`;
-}
-
-function detectSettlement(state: GameState): SettlementKind {
-  if (state.okrRevealed && state.okrSettlements) return "okr_reveal";
-  if (state.pendingInteraction?.type === "C13_WINDOW") return "cross_line";
-  if (
-    state.pendingPerformanceSettlement ||
-    state.pendingPerformanceSettlementQueue.length > 0
-  ) {
-    return "cross_line";
-  }
-  if (state.gameOver && !state.okrRevealed) return "season_end";
-  return null;
-}
-
 function seriesProgressCopy(state: GameState): string {
   const sprintLabel = state.config.modules.continuousSprint
     ? `Sprint ${state.sprint}/${state.config.sprintCount}`
@@ -223,7 +192,6 @@ function humanMustHandleForced(
   forced: ForcedWindowKind,
 ): boolean {
   if (!forced) return false;
-  if (forced === "sprint_switch") return false;
   if (forced === "c14") {
     return (
       state.pendingInteraction?.type === "C14" &&
@@ -259,10 +227,11 @@ function turnHudCopy(opts: {
 function forcedWindowPreview(
   state: GameState,
   forced: ForcedWindowKind,
+  sprintSwitchOpen: boolean,
 ): string | null {
   if (forced === "c14") return "下一强制窗：C-14 响应";
   if (forced === "catch_up_dark_bid") return "下一强制窗：暗标（必须出价）";
-  if (forced === "sprint_switch") return "下一强制窗：Sprint 切换";
+  if (sprintSwitchOpen) return "信息：Sprint 切换文案";
   if (state.pendingDarkBid && !state.pendingDarkBid.resolved && !state.pendingDarkBid.isCatchUp) {
     return "预告：暗标冲刺进行中";
   }
@@ -377,6 +346,8 @@ export default function PlayShellPage() {
   const [error, setError] = useState<string | null>(null);
   const [sprintSwitchAckedKey, setSprintSwitchAckedKey] = useState<string | null>(null);
   const [settlementDismissedKey, setSettlementDismissedKey] = useState<string | null>(null);
+  const [infoTip, setInfoTip] = useState<InfoTip | null>(null);
+  const [commitGen, setCommitGen] = useState(0);
   const [botFlash, setBotFlash] = useState<string | null>(null);
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
   const [selectedVariantKey, setSelectedVariantKey] = useState<string | null>(null);
@@ -384,8 +355,18 @@ export default function PlayShellPage() {
   const [tableDetail, setTableDetail] = useState<TableDetailKind>(null);
   const [perfBarOpen, setPerfBarOpen] = useState(false);
   const phaseBarRef = useRef<HTMLElement | null>(null);
+  const forcedWindowRef = useRef<HTMLElement | null>(null);
+  const confirmPlayRef = useRef<HTMLButtonElement | null>(null);
+  const handFanRef = useRef<HTMLUListElement | null>(null);
+  const settlementLayerRef = useRef<HTMLDivElement | null>(null);
   const botBusyRef = useRef(false);
   const illegalPressTimer = useRef<number | null>(null);
+  const playNodeKeyRef = useRef<number | null>(null);
+  const prevForcedRef = useRef<ForcedWindowKind | undefined>(undefined);
+  const prevSprintSwitchKeyRef = useRef<string | null>(null);
+  const prevSettlementKeyRef = useRef<string | null>(null);
+  const infoTipRef = useRef<InfoTip | null>(null);
+  const infoTipTimerRef = useRef<number | null>(null);
 
   const vsBot = playMode === "vs_bot";
   const currentPlayerId = state ? getCurrentPlayerId(state) : null;
@@ -433,19 +414,17 @@ export default function PlayShellPage() {
     setIllegalHint(null);
   }
 
-  const forced = state ? detectForcedWindow(state, sprintSwitchAckedKey) : null;
+  const forced = state ? detectForcedWindow(state) : null;
+  const sprintSwitchOpen = state
+    ? sprintSwitchInfoOpen(state, sprintSwitchAckedKey)
+    : false;
   const settlementKind = state ? detectSettlement(state) : null;
-  const settlementKey = state
-    ? settlementKind === "okr_reveal"
-      ? `okr:${state.okrSettlements?.map((r) => r.playerId).join(",")}`
-      : settlementKind === "cross_line"
-        ? `cross:${state.pendingInteraction?.type === "C13_WINDOW" ? state.pendingInteraction.milestoneId : state.pendingPerformanceSettlement?.milestoneId ?? "q"}:${state.pendingPerformanceSettlementQueue.length}`
-        : settlementKind === "season_end"
-          ? `season:${state.sprint}:${state.round}`
-          : null
-    : null;
+  const settlementKey = state ? settlementKeyFor(state, settlementKind) : null;
   const settlementOpen =
     Boolean(settlementKind && settlementKey && settlementKey !== settlementDismissedKey);
+  const crossLineForced = Boolean(
+    state && settlementOpen && settlementNeedsAction(state, settlementKind),
+  );
 
   const humanForced =
     state && vsBot
@@ -456,7 +435,7 @@ export default function PlayShellPage() {
     state && vsBot ? listBotActorSeats(state, botSeatIds) : [];
   const botActing = vsBot && botActors.length > 0;
   const isHumanTurn = currentPlayerId === humanSeat;
-  const opsBlocked = showForcedUi;
+  const opsBlocked = showForcedUi || crossLineForced;
   const actionBarLocked = Boolean(vsBot && !isHumanTurn && !humanForced && botActing);
 
   function pushLog(lines: string[]) {
@@ -464,14 +443,34 @@ export default function PlayShellPage() {
     setLog((prev) => [...lines, ...prev].slice(0, 40));
   }
 
-  function focusPhaseBar() {
-    phaseBarRef.current?.focus();
-    phaseBarRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  function focusAfterOverlayClose() {
+    window.requestAnimationFrame(() => {
+      const forcedEl = forcedWindowRef.current ?? settlementLayerRef.current;
+      if (forcedEl) {
+        forcedEl.focus();
+        forcedEl.scrollIntoView({ behavior: "smooth", block: "nearest" });
+        return;
+      }
+      const confirm = confirmPlayRef.current;
+      if (confirm && !confirm.disabled) {
+        confirm.focus();
+        return;
+      }
+      handFanRef.current?.focus();
+    });
+  }
+
+  function clearInfoTip() {
+    setInfoTip(null);
+    if (infoTipTimerRef.current != null) {
+      window.clearTimeout(infoTipTimerRef.current);
+      infoTipTimerRef.current = null;
+    }
   }
 
   function closeSettlement() {
     if (settlementKey) setSettlementDismissedKey(settlementKey);
-    focusPhaseBar();
+    focusAfterOverlayClose();
   }
 
   function openPerfBar(event?: MouseEvent) {
@@ -486,7 +485,7 @@ export default function PlayShellPage() {
   function ackSprintSwitch() {
     if (!state?.sprintSwitchInfo) return;
     setSprintSwitchAckedKey(sprintSwitchKey(state));
-    focusPhaseBar();
+    focusAfterOverlayClose();
   }
 
   function flashBotAuto(seatId: string, kind: string) {
@@ -522,6 +521,13 @@ export default function PlayShellPage() {
     setScreen("play");
     setSprintSwitchAckedKey(null);
     setSettlementDismissedKey(null);
+    setInfoTip(null);
+    setCommitGen(0);
+    playNodeKeyRef.current = null;
+    prevForcedRef.current = undefined;
+    prevSprintSwitchKeyRef.current = null;
+    prevSettlementKeyRef.current = null;
+    infoTipRef.current = null;
     setPerfBarOpen(false);
     setBotFlash(null);
     clearCardSelection();
@@ -540,6 +546,7 @@ export default function PlayShellPage() {
   }
 
   function commit(next: GameState, events: string[] = []) {
+    setCommitGen((g) => g + 1);
     setState(cloneState(next));
     pushLog(events);
     setError(null);
@@ -641,8 +648,8 @@ export default function PlayShellPage() {
   function runBotStep() {
     if (!state || !vsBot || state.gameOver || botBusyRef.current) return false;
 
-    // Sprint switch is UI-only — auto-ack so Bot flow never stalls
-    if (forced === "sprint_switch" && state.sprintSwitchInfo) {
+    // Sprint 切换是信息层 — 人机下立刻确认，避免文案窗拖慢 Bot
+    if (sprintSwitchOpen && state.sprintSwitchInfo) {
       botBusyRef.current = true;
       setSprintSwitchAckedKey(sprintSwitchKey(state));
       pushLog([`Bot 自动确认 Sprint 切换`]);
@@ -691,8 +698,7 @@ export default function PlayShellPage() {
 
   useEffect(() => {
     if (screen !== "play" || !state || !vsBot || state.gameOver) return;
-    const needsSprint =
-      forced === "sprint_switch" && Boolean(state.sprintSwitchInfo);
+    const needsSprint = sprintSwitchOpen && Boolean(state.sprintSwitchInfo);
     const actors = listBotActorSeats(state, botSeatIds);
     if (!needsSprint && actors.length === 0) return;
 
@@ -706,9 +712,104 @@ export default function PlayShellPage() {
     vsBot,
     state,
     botSeatIds,
-    forced,
+    sprintSwitchOpen,
     sprintSwitchAckedKey,
   ]);
+
+  /** commit 推进 = 下一节点：关掉推进前已打开的信息层；新出现的层同帧不关 */
+  useEffect(() => {
+    if (screen !== "play" || !state) {
+      playNodeKeyRef.current = null;
+      prevForcedRef.current = undefined;
+      prevSprintSwitchKeyRef.current = null;
+      prevSettlementKeyRef.current = null;
+      return;
+    }
+
+    const prevGen = playNodeKeyRef.current;
+    const nodeAdvanced = prevGen !== null && prevGen !== commitGen;
+    playNodeKeyRef.current = commitGen;
+
+    const nextForced = detectForcedWindow(state);
+    const prevForced = prevForcedRef.current;
+    prevForcedRef.current = nextForced;
+
+    const currentSprintKey = state.sprintSwitchInfo ? sprintSwitchKey(state) : null;
+    const currentSettlementKey =
+      settlementOpen && settlementKey ? settlementKey : null;
+
+    let dismissedInfo = false;
+
+    if (nodeAdvanced) {
+      // Sprint 文案窗：仅当「同一条」在推进前已打开
+      if (
+        currentSprintKey &&
+        prevSprintSwitchKeyRef.current === currentSprintKey &&
+        sprintSwitchInfoOpen(state, sprintSwitchAckedKey)
+      ) {
+        setSprintSwitchAckedKey(currentSprintKey);
+        dismissedInfo = true;
+      }
+      // 结算信息层：同一 key 在推进前已打开，且非终局/未完成强制
+      if (
+        currentSettlementKey &&
+        prevSettlementKeyRef.current === currentSettlementKey &&
+        shouldAutoDismissSettlement(state, settlementKind)
+      ) {
+        setSettlementDismissedKey(currentSettlementKey);
+        dismissedInfo = true;
+      }
+      if (infoTipRef.current) {
+        clearInfoTip();
+        infoTipRef.current = null;
+        dismissedInfo = true;
+      }
+    }
+
+    prevSprintSwitchKeyRef.current = currentSprintKey;
+    prevSettlementKeyRef.current = currentSettlementKey;
+
+    const now = Date.now();
+    // 强制窗刚结束 → reveal tip（同帧在清旧 tip 之后挂上；下一 commit 会立刻清）
+    const nextTip = tipFromForcedTransition(prevForced, nextForced, now);
+    if (nextTip) {
+      infoTipRef.current = nextTip;
+      setInfoTip(nextTip);
+      if (infoTipTimerRef.current != null) {
+        window.clearTimeout(infoTipTimerRef.current);
+      }
+      const delay = Math.max(0, nextTip.holdUntilMs - now);
+      infoTipTimerRef.current = window.setTimeout(() => {
+        setInfoTip((current) => {
+          if (!current || !canTimerDismissInfoTip(current, Date.now())) {
+            return current;
+          }
+          infoTipRef.current = null;
+          return null;
+        });
+        infoTipTimerRef.current = null;
+        focusAfterOverlayClose();
+      }, delay);
+      return;
+    }
+
+    if (dismissedInfo) {
+      focusAfterOverlayClose();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- commit-gen driven
+  }, [screen, state, commitGen]);
+
+  useEffect(() => {
+    infoTipRef.current = infoTip;
+  }, [infoTip]);
+
+  useEffect(() => {
+    return () => {
+      if (infoTipTimerRef.current != null) {
+        window.clearTimeout(infoTipTimerRef.current);
+      }
+    };
+  }, []);
 
   function runCatchUpDemo() {
     if (!state) return;
@@ -869,7 +970,7 @@ export default function PlayShellPage() {
   const interaction = state.pendingInteraction;
   const activePlayer = state.players.find((p) => p.id === activeSeat)!;
   const darkBidZone = darkBidZoneCopy(state);
-  const preview = forcedWindowPreview(state, forced);
+  const preview = forcedWindowPreview(state, forced, sprintSwitchOpen);
   const progressPct = Math.min(
     100,
     Math.round((state.progress / Math.max(1, state.totalProgressTarget)) * 100),
@@ -918,9 +1019,18 @@ export default function PlayShellPage() {
           {botFlash}
         </div>
       )}
+      {infoTip && (
+        <div
+          className={`info-tip tip-${infoTip.kind}`}
+          role="status"
+          aria-live="polite"
+        >
+          {infoTip.text}
+        </div>
+      )}
       {/* 1. Phase bar — 单行 ≤40px；演示折入次要 */}
       <header
-        className={`phase-bar ${showForcedUi ? "busy" : "idle"}`}
+        className={`phase-bar ${showForcedUi || crossLineForced ? "busy" : "idle"}`}
         aria-label="相位条"
         tabIndex={-1}
         ref={phaseBarRef}
@@ -941,7 +1051,7 @@ export default function PlayShellPage() {
           </div>
           <div className="phase-bar-status">
             <span className="phase-now">{PHASE_LABEL[state.turnPhase]}</span>
-            {showForcedUi || preview ? (
+            {showForcedUi || crossLineForced || preview ? (
               <span className="phase-preview">{preview ?? "强制窗进行中"}</span>
             ) : (
               <span className="phase-hud">
@@ -990,7 +1100,13 @@ export default function PlayShellPage() {
         </div>
 
         {showForcedUi && forced === "c14" && interaction?.type === "C14" && (
-          <section className="forced-window" role="alertdialog" aria-label="C-14 响应">
+          <section
+            className="forced-window"
+            role="alertdialog"
+            aria-label="C-14 响应"
+            tabIndex={-1}
+            ref={forcedWindowRef}
+          >
             <h2>必须响应 C-14，不能跳过</h2>
             <p>
               {seatLabel(state, interaction.sourceId)} 的互动针对{" "}
@@ -1026,6 +1142,8 @@ export default function PlayShellPage() {
             className="forced-window catch-up"
             role="alertdialog"
             aria-label={pending.isCatchUp ? "跨线补开暗标" : "冲刺区暗标"}
+            tabIndex={-1}
+            ref={forcedWindowRef}
           >
             <h2>{pending.isCatchUp ? "必须补开，不能跳过" : "暗标进行中，不能跳过"}</h2>
             <p>
@@ -1089,8 +1207,13 @@ export default function PlayShellPage() {
           </section>
         )}
 
-        {showForcedUi && forced === "sprint_switch" && state.sprintSwitchInfo && (
-          <section className="forced-window sprint" role="alertdialog" aria-label="Sprint 切换">
+        {sprintSwitchOpen && state.sprintSwitchInfo && (
+          <section
+            className="forced-window sprint info-layer"
+            role="dialog"
+            aria-label="Sprint 切换"
+            tabIndex={-1}
+          >
             <h2>
               Sprint 切换 {state.sprintSwitchInfo.fromSprint} →{" "}
               {state.sprintSwitchInfo.toSprint}
@@ -1105,8 +1228,9 @@ export default function PlayShellPage() {
               {getRequirementCard(state.sprintSwitchInfo.previousRequirementId)?.name ?? "—"}{" "}
               → {getRequirementCard(state.sprintSwitchInfo.nextRequirementId)?.name ?? "—"}
             </p>
+            <p className="muted">信息窗 · 不挡操作 · 下一节点到达时自动关闭</p>
             <button type="button" className="primary" onClick={ackSprintSwitch}>
-              确认进入下一 Sprint
+              知道了
             </button>
           </section>
         )}
@@ -1400,7 +1524,7 @@ export default function PlayShellPage() {
               当前领先：<strong>{mvpName(state)}</strong>
             </p>
             <button type="button" className="ghost" onClick={closeSettlement}>
-              关闭并回到相位条
+              关闭并回到操作区
             </button>
           </div>
         )}
@@ -1466,7 +1590,7 @@ export default function PlayShellPage() {
             </div>
 
             <button type="button" className="primary" onClick={closeSettlement}>
-              关闭并回到相位条
+              关闭并回到操作区
             </button>
           </div>
         )}
@@ -1569,6 +1693,7 @@ export default function PlayShellPage() {
               <button
                 type="button"
                 className="primary confirm-play"
+                ref={confirmPlayRef}
                 disabled={!selectedPlayAction || opsBlocked || actionBarLocked}
                 title={
                   !selectedCardId
@@ -1602,7 +1727,7 @@ export default function PlayShellPage() {
           {activePlayer.hand.length === 0 ? (
             <p className="muted hand-empty">空手牌</p>
           ) : (
-            <ul className="hand-fan" aria-label="可点选手牌">
+            <ul className="hand-fan" aria-label="可点选手牌" tabIndex={-1} ref={handFanRef}>
               {activePlayer.hand.map((cardId, index) => {
                 const card = getActionCard(cardId);
                 const badge = handCardBadge(cardId);
@@ -1706,7 +1831,14 @@ export default function PlayShellPage() {
 
       {/* 5. Settlement layer — 跨线仍用全屏浮层；终局板在桌心 mid */}
       {crossLineOpen && (
-        <div className="settlement-layer" role="dialog" aria-modal="true" aria-label="结算层">
+        <div
+          className="settlement-layer"
+          role="dialog"
+          aria-modal="true"
+          aria-label="结算层"
+          tabIndex={-1}
+          ref={crossLineForced ? settlementLayerRef : undefined}
+        >
           <div className="settlement-panel cross-line">
             <h2>跨线结算</h2>
             {interaction?.type === "C13_WINDOW" ? (
@@ -1760,9 +1892,13 @@ export default function PlayShellPage() {
                   ))}
               </div>
             )}
-            <button type="button" className="primary" onClick={closeSettlement}>
-              关闭并回到相位条
-            </button>
+            {crossLineForced ? (
+              <p className="muted">强制窗 · 完成响应前不会自动关闭</p>
+            ) : (
+              <button type="button" className="primary" onClick={closeSettlement}>
+                关闭并回到操作区
+              </button>
+            )}
           </div>
         </div>
       )}

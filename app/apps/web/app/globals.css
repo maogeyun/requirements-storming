@@ -881,6 +881,47 @@ button.demo:hover {
   pointer-events: none;
 }
 
+.info-tip {
+  position: sticky;
+  top: 0;
+  z-index: 29;
+  margin: 0.2rem auto 0;
+  width: fit-content;
+  max-width: calc(100% - 1.5rem);
+  padding: 0.4rem 0.85rem;
+  border-radius: 8px;
+  background: rgba(12, 28, 40, 0.94);
+  border: 1px solid rgba(61, 220, 151, 0.35);
+  color: var(--ink);
+  font-size: 0.78rem;
+  letter-spacing: 0.01em;
+  pointer-events: none;
+  animation: tip-in 180ms ease-out;
+}
+
+.info-tip.tip-dark_bid_reveal {
+  border-color: rgba(201, 162, 39, 0.55);
+}
+
+.info-tip.tip-c14_explain {
+  border-color: rgba(232, 93, 117, 0.45);
+}
+
+@keyframes tip-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.forced-window.sprint.info-layer {
+  animation: none;
+}
+
 .seat-color {
   width: 10px;
   height: 10px;

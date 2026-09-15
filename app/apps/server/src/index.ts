@@ -22,7 +22,11 @@ function emit(connectionId: string, message: ServerMessage): void {
   ws.send(JSON.stringify(message));
 }
 
-const hub = new MatchHub(emit);
+const hub = new MatchHub(emit, {
+  botFillMs: process.env.MATCH_BOT_FILL_MS
+    ? Number(process.env.MATCH_BOT_FILL_MS)
+    : undefined,
+});
 
 const server = createServer((_req, res) => {
   res.writeHead(200, { "content-type": "text/plain; charset=utf-8" });

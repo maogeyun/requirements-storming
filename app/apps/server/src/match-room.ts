@@ -249,11 +249,15 @@ export class MatchRoom {
       seed: this.seed,
     });
 
-    // Align seat ids with engine player ids (p1..pn)
+    // Align seat ids with engine player ids (p1..pn).
+    // Online shows nickname-style names (incl. silent-fill fakes), not seat-role labels.
     for (let i = 0; i < this.seats.length; i += 1) {
       const enginePlayer = gameState.players[i];
-      if (enginePlayer) {
-        this.seats[i]!.seatId = enginePlayer.id;
+      const seat = this.seats[i];
+      if (enginePlayer && seat) {
+        seat.seatId = enginePlayer.id;
+        enginePlayer.name = seat.displayName;
+        enginePlayer.displayName = seat.displayName;
       }
     }
 

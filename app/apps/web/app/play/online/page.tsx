@@ -10,8 +10,13 @@ import type {
 import { DISCONNECT_GRACE_MS } from "@rs/shared";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { CoachTip } from "../../coach-tip";
 import { MatchClient } from "../../../lib/match-client";
+import {
+  allowSoftTipsNow,
+  coachContextFromOnline,
+} from "../../../lib/onboarding";
 import {
   DISCONNECT_HOSTED_HINT,
   DISCONNECT_RECLAIM_TOAST,
@@ -51,6 +56,7 @@ export default function OnlinePlayPage() {
   );
   const [toast, setToast] = useState<string | null>(null);
   const [forceWindow, setForceWindow] = useState<ForceWindow | null>(null);
+  const [allowSoftTips, setAllowSoftTips] = useState(false);
   const clientRef = useRef<MatchClient | null>(null);
   const intentionalCloseRef = useRef(false);
   const hasViewRef = useRef(false);
@@ -58,6 +64,10 @@ export default function OnlinePlayPage() {
   const handRef = useRef<HTMLElement | null>(null);
   const forceRef = useRef<HTMLElement | null>(null);
   const reconnectTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    setAllowSoftTips(allowSoftTipsNow());
+  }, []);
 
   useEffect(() => {
     const session = loadOnlineSession();
@@ -234,6 +244,29 @@ export default function OnlinePlayPage() {
     router.replace("/");
   }
 
+  const coachCtx = useMemo(
+    () =>
+      coachContextFromOnline({
+        allowSoft: allowSoftTips,
+        inMatchQueue: false,
+        gameOver: Boolean(view?.gameOver),
+        disconnectBar: disconnectUi === "grace",
+        graceSec: graceLeftSec,
+        forceKind:
+          forceWindow?.kind === "dark_bid" ||
+          forceWindow?.kind === "c14" ||
+          forceWindow?.kind === "c13"
+            ? forceWindow.kind
+            : null,
+        ownTurn: Boolean(
+          view?.currentPlayerId &&
+            (seatId ?? view.selfId) &&
+            view.currentPlayerId === (seatId ?? view.selfId),
+        ),
+      }),
+    [allowSoftTips, view, disconnectUi, graceLeftSec, forceWindow, seatId],
+  );
+
   if (phase === "error" && !view) {
     return (
       <main className="shell online-play">
@@ -254,6 +287,7 @@ export default function OnlinePlayPage() {
           {disconnectTopBar(graceLeftSec)}
         </div>
       ) : null}
+      <CoachTip ctx={coachCtx} />
 
       <header className="online-play-bar">
         <div>

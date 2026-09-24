@@ -716,7 +716,6 @@ export default function PlayShellPage() {
       runBotStep();
     }, 280);
     return () => window.clearTimeout(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- drive off state fingerprint
   }, [
     screen,
     vsBot,
@@ -813,7 +812,6 @@ export default function PlayShellPage() {
     if (dismissedInfo) {
       focusAfterOverlayClose();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- commit-gen driven
   }, [screen, state, commitGen]);
 
   useEffect(() => {

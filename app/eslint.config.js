@@ -5,7 +5,15 @@ export default tseslint.config(
   eslint.configs.recommended,
   ...tseslint.configs.recommended,
   {
-    ignores: ["**/dist/**", "**/.next/**", "**/node_modules/**", "**/coverage/**"],
+    ignores: [
+      "**/dist/**",
+      "**/.next/**",
+      "**/out/**",
+      "**/node_modules/**",
+      "**/coverage/**",
+      "**/src-tauri/target/**",
+      "**/src-tauri/gen/**",
+    ],
   },
   {
     rules: {

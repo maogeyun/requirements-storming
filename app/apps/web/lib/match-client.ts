@@ -1,10 +1,25 @@
 import type { ClientMessage, ServerMessage } from "@rs/shared";
 
+const DEFAULT_WS_URL = "ws://localhost:8787";
+
+type DesktopWindow = { __RS_WS_URL?: unknown };
+
+/** Desktop shell sets this before page scripts when `WS_URL` is present. */
+function desktopWsUrl(): string | null {
+  const injected = (globalThis as { window?: DesktopWindow }).window?.__RS_WS_URL;
+  if (typeof injected !== "string") return null;
+  const url = injected.trim();
+  if (url.startsWith("ws://") || url.startsWith("wss://")) return url;
+  return null;
+}
+
 export function matchWsUrl(): string {
+  const fromDesktop = desktopWsUrl();
+  if (fromDesktop) return fromDesktop;
   if (typeof process !== "undefined" && process.env.NEXT_PUBLIC_WS_URL) {
     return process.env.NEXT_PUBLIC_WS_URL;
   }
-  return "ws://localhost:8787";
+  return DEFAULT_WS_URL;
 }
 
 export type MatchClientHandlers = {

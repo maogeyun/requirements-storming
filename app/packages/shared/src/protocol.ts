@@ -14,7 +14,7 @@ export type RoomPhase = "lobby" | "playing" | "finished";
 
 /**
  * Online disconnect grace before Bot takeover (i-pple).
- * Seat retained; reclaim via stub seatToken. Configurable at room construct.
+ * Seat retained; reclaim via seatToken issued after auth. Configurable at room construct.
  */
 export const DISCONNECT_GRACE_MS = 45_000;
 
@@ -139,15 +139,25 @@ export interface GameRoomState {
 
 export type JoinMode = "create" | "join" | "match";
 
-/** 创建/加入/简单匹配。V1 鉴权为 stub seatToken（Steam Session Ticket 后补）。 */
+/**
+ * 创建/加入/简单匹配。
+ * 联机鉴权：客户端提交 Steam Web API 会话票据（hex），服务端向
+ * ISteamUserAuth/AuthenticateUserTicket 交换后签发 seatToken。
+ * 重连只带 seatToken，不必重复交换。开发模式可省略票据。
+ */
 export interface ClientJoin {
   type: "join";
   mode: JoinMode;
   /** join 必填；create 可省略（服务端生成）；match 可省略 */
   roomCode?: string;
   displayName: string;
-  /** 重连时带回；首次加入可省略，由服务端签发 stub */
+  /** 重连时带回已签发的 seatToken。不是 Steam 票据。 */
   seatToken?: string;
+  /**
+   * GetAuthTicketForWebApi 的票据，十六进制。
+   * 仅首次入座需要；seatToken 重连可省略。
+   */
+  sessionTicket?: string;
   /**
    * 可选；联机固定满 4 开局。若传入且 !== 4，服务端拒绝。
    * 主机不可改规则 / 不可不足人数开局。
@@ -203,7 +213,7 @@ export interface ServerView {
   type: "view";
   roomCode: string;
   seatId: string;
-  /** stub seatToken；后续可换 Steam Session Ticket */
+  /** 鉴权通过后签发的不透明 seatToken；重连密钥，不是 Steam 票据 */
   seatToken: string;
   phase: RoomPhase;
   lobby?: LobbyState;

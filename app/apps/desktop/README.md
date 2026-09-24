@@ -5,7 +5,7 @@
 - 窗口初始地址是 `/play?mode=vs_bot`（人机预选）。首页、大厅、联机牌桌随同一次静态导出带上，路由仍是 web 里原来的那些。
 - 人机走 web 里已有的本地规则引擎（`createGame` / `listLegalActions` / `applyAction`），与浏览器人机同一条路径。
 - 联机仍连接独立的 match-server。壳里不启动、不内嵌权威进程。
-- 本目录没有第二套 UI，也不改规则引擎。Steamworks、AppId、成就、自动更新、安装器皮肤都不在这里。
+- 本目录没有第二套 UI，也不改规则引擎。成就、自动更新、安装器皮肤不在这里。Steamworks V1（初始化、SteamID、会话票据、浮层）见下文。
 
 ## 前端怎么接进壳
 
@@ -75,4 +75,40 @@ pnpm --filter @rs/desktop build:linux
 - `style-src` / `font-src` 放行现有 UI 使用的 Google Fonts。
 - 开发态 `devCsp` 额外放行 `localhost:3000` 的脚本、`unsafe-eval` 和 HMR WebSocket。桌面 dev 直接打开 Next，这条策略只在 Tauri 往 HTML 注入 CSP 时生效。
 
-壳不携带 Steam 密钥、票据或网关密码。
+壳不携带 Steam Web API 密钥或网关密码。会话票据只在联机 join 时向 match-server 提交，不写进页面全局变量。
+
+## Steamworks V1
+
+社区绑定是 [`steamworks`](https://crates.io/crates/steamworks)（steamworks-rs），用 Cargo feature `steam` 打开。默认构建**不链接** Steamworks，CI 不需要安装 Steam SDK。带 Steam 的桌面构建走真实 `SteamAPI_Init` / `SteamAPI_Shutdown`。
+
+```bash
+# 真实路径（需要本机 Steam 客户端，以及 AppID）
+pnpm --filter @rs/desktop dev:steam
+pnpm --filter @rs/desktop build:steam
+pnpm --filter @rs/desktop build:steam:win
+pnpm --filter @rs/desktop build:steam:linux
+```
+
+### AppID
+
+启动时按这个顺序读取，用 `Client::init_app`：
+
+1. 环境变量 `STEAM_APP_ID`
+2. 当前工作目录的 `steam_appid.txt`（`tauri dev` 的 cwd 是 `src-tauri`）
+3. 可执行文件旁边的 `steam_appid.txt`
+
+文件里只有一行数字。示例见 `src-tauri/steam_appid.txt.example`（`480`，Valve 的 Spacewar，只适合本地把 Steam 初始化跑通）。复制为 `src-tauri/steam_appid.txt`（已 gitignore）。正式 AppID 不要提交。
+
+没配 AppID，或 **Steam 客户端没开 / 没登录**，窗口仍然打开，`/play` 人机可以点「开始」。页面顶部会显示失败原因（「未配置 Steam AppID」或「Steam 客户端未运行」）。未启用 `steam` feature 的构建会说明要改用 `dev:steam`。
+
+### 浮层
+
+「打开 Steam 浮层」调用 `ISteamFriends::ActivateGameOverlay("Friends")`，只打开 Steam 自己的浮层，不是邀请进房。壳保持现有窗口模式，不铺一层挡住点击的罩子。状态条是普通文档流（`position: static`，`pointer-events: none`），不覆盖 `/play` 的点选出牌（`.hand-card`）和强制窗（`.forced-window`）。人机不依赖浮层。
+
+### 联机票据
+
+Steam 初始化成功后，建房 / 加入 / 自由匹配会取 `GetAuthTicketForWebApi`（identity `requirement-storm`）的 hex 票据，放进 `join.sessionTicket`。match-server 用 Publisher Key 向 `ISteamUserAuth/AuthenticateUserTicket` 交换 SteamID，再签发 `seatToken`。断线重连只交 `seatToken`。人机对局不取票据。
+
+运行时还要把 Steam 再分发包放在可执行文件旁边（Windows `steam_api64.dll`，Linux `libsteam_api.so`），否则真实构建能编过、启动时仍会失败。见 steamworks-rs 关于 redistributable 的说明。
+
+不做：P2P/UDP、成就、排行榜、云存档、Workshop、好友邀请进房、Rich Presence、Deck、商店素材。

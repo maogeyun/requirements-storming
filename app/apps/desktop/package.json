@@ -5,9 +5,13 @@
   "description": "《需求风暴》Tauri 2 桌面壳",
   "scripts": {
     "dev": "tauri dev",
+    "dev:steam": "tauri dev --features steam",
     "build": "tauri build",
+    "build:steam": "tauri build --features steam",
     "build:win": "tauri build --bundles msi,nsis",
-    "build:linux": "tauri build --bundles deb"
+    "build:steam:win": "tauri build --bundles msi,nsis --features steam",
+    "build:linux": "tauri build --bundles deb",
+    "build:steam:linux": "tauri build --bundles deb --features steam"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.11.0"

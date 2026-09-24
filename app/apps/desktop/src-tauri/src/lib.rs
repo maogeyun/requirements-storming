@@ -1,12 +1,32 @@
+mod steam_config;
+mod steam_host;
+
+use tauri::Manager;
+
+use steam_config::{steam_init_script, SteamStatus};
+use steam_host::{steam_activate_overlay, steam_session_ticket, steam_status, SteamHost};
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    let host = SteamHost::boot();
     tauri::Builder::default()
+        .manage(host)
+        .invoke_handler(tauri::generate_handler![
+            steam_status,
+            steam_session_ticket,
+            steam_activate_overlay
+        ])
         .setup(|app| {
             open_main_window(app)?;
             Ok(())
         })
-        .run(tauri::generate_context!())
-        .expect("error while running the Requirement Storm desktop shell");
+        .build(tauri::generate_context!())
+        .expect("error while running the Requirement Storm desktop shell")
+        .run(|app, event| {
+            if let tauri::RunEvent::Exit = event {
+                app.state::<SteamHost>().shutdown();
+            }
+        });
 }
 
 fn open_main_window(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
@@ -20,11 +40,18 @@ fn open_main_window(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Erro
         .ok_or_else(|| std::io::Error::other("tauri.conf.json is missing the main window"))?;
 
     let mut builder = tauri::WebviewWindowBuilder::from_config(app, &window_config)?;
-    if let Some(script) = ws_url_init_script() {
-        builder = builder.initialization_script(script);
-    }
+    let steam = app.state::<SteamHost>().status();
+    builder = builder.initialization_script(page_init_script(&steam));
     builder.build()?;
     Ok(())
+}
+
+fn page_init_script(status: &SteamStatus) -> String {
+    let steam = steam_init_script(status);
+    match ws_url_init_script() {
+        Some(ws) => format!("{steam}\n{ws}"),
+        None => steam,
+    }
 }
 
 /// `WS_URL` overrides the gateway inside the webview.

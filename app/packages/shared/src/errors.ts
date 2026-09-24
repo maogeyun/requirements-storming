@@ -17,6 +17,10 @@ export enum ErrorCode {
   PUBLIC_DEBT_REJECTED = "PUBLIC_DEBT_REJECTED",
   WRONG_PHASE = "WRONG_PHASE",
   NOT_YOUR_TURN = "NOT_YOUR_TURN",
+  /** 联机加入缺少可交换的 Steam 会话票据（开发模式不返回此码） */
+  AUTH_REQUIRED = "AUTH_REQUIRED",
+  /** 会话票据被 Steam Web API 拒绝，或票据格式无效 */
+  AUTH_FAILED = "AUTH_FAILED",
 }
 
 export interface ErrorPayload {

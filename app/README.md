@@ -14,7 +14,7 @@ app/
 │   ├── server/         # match-server（RedQueen V1 WS）
 │   ├── web/            # Next.js 15 前端
 │   └── desktop/        # Tauri 2 桌面壳（加载现有 web `/play`）
-├── steam/              # Steamworks 配置（S1 占位）
+├── steam/              # Steam 轨道说明（成就 / Depot 仍后置）
 ├── tests/
 │   └── integration/    # 联机集成测试（M4 占位）
 ├── .env.example
@@ -89,6 +89,7 @@ pnpm dev:desktop  # Tauri 2 壳，窗口打开 /play（需本机 WebView）
 - [ ] 大厅 / 牌桌 UI
 - [ ] 暗标 reveal 时序
 - [x] 断线重连 / Bot 接管（grace 45s + seatToken reclaim；自由匹配不泄 Bot）
+- [x] Steamworks V1：壳内 Init/Shutdown、SteamID、浮层；Session Ticket 换 seatToken（人机不依赖 Steam）
 
 ## M1 可玩壳
 

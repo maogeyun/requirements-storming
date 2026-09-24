@@ -29,7 +29,19 @@ import type {
   OkrEvaluation,
   TurnPhase,
 } from "@rs/shared";
+import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
+import { CoachTip } from "../coach-tip";
+import {
+  STEP3_LINE,
+  STEP3_PRIMARY,
+  STEP3_SKIP,
+  allowSoftTipsNow,
+  completeOnboardingConfirm,
+  playConfirmGuideNow,
+  skipOnboarding,
+  coachContextFromLocalTable,
+} from "../../lib/onboarding";
 import {
   barActionLabel,
   compactVariantLabel,
@@ -337,7 +349,10 @@ function opponentRingSlots(count: number): RingSlot[] {
 }
 
 export default function PlayShellPage() {
+  const router = useRouter();
   const [screen, setScreen] = useState<Screen>("setup");
+  const [lobbyGuide, setLobbyGuide] = useState(false);
+  const [allowSoftTips, setAllowSoftTips] = useState(false);
   const [playMode, setPlayMode] = useState<PlayMode>("local");
   const [playerCount, setPlayerCount] = useState(4);
   const [state, setState] = useState<GameState | null>(null);
@@ -373,9 +388,10 @@ export default function PlayShellPage() {
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    if (params.get("mode") === "vs_bot") {
-      setPlayMode("vs_bot");
-    }
+    const vs = params.get("mode") === "vs_bot";
+    if (vs) setPlayMode("vs_bot");
+    setLobbyGuide(vs && playConfirmGuideNow());
+    setAllowSoftTips(allowSoftTipsNow());
   }, []);
 
   const vsBot = playMode === "vs_bot";
@@ -447,6 +463,40 @@ export default function PlayShellPage() {
   const isHumanTurn = currentPlayerId === humanSeat;
   const opsBlocked = showForcedUi || crossLineForced;
   const actionBarLocked = Boolean(vsBot && !isHumanTurn && !humanForced && botActing);
+  const endgameRitual =
+    settlementOpen &&
+    (settlementKind === "okr_reveal" || settlementKind === "season_end");
+  const guideSeatId = state ? (vsBot ? humanSeat : activeSeat) : null;
+  const okrVisible = Boolean(
+    guideSeatId && state?.players.some((player) => player.id === guideSeatId && player.okrId),
+  );
+  const coachCtx = useMemo(
+    () =>
+      coachContextFromLocalTable({
+        allowSoft: allowSoftTips,
+        gameOver: Boolean(state?.gameOver),
+        endgameRitual,
+        vsBot,
+        humanTurn: isHumanTurn,
+        actionLocked: actionBarLocked,
+        showForced: showForcedUi,
+        forced,
+        sprintSwitch: sprintSwitchOpen,
+        okrVisible,
+      }),
+    [
+      allowSoftTips,
+      state,
+      endgameRitual,
+      vsBot,
+      isHumanTurn,
+      actionBarLocked,
+      showForcedUi,
+      forced,
+      sprintSwitchOpen,
+      okrVisible,
+    ],
+  );
 
   function pushLog(lines: string[]) {
     if (lines.length === 0) return;
@@ -504,7 +554,19 @@ export default function PlayShellPage() {
     window.setTimeout(() => setBotFlash(null), 900);
   }
 
+  function skipLobbyGuide() {
+    skipOnboarding();
+    setLobbyGuide(false);
+    setAllowSoftTips(allowSoftTipsNow());
+    router.replace("/");
+  }
+
   function startGame() {
+    if (lobbyGuide && playMode === "vs_bot") {
+      completeOnboardingConfirm();
+      setLobbyGuide(false);
+      setAllowSoftTips(true);
+    }
     const names =
       playMode === "vs_bot"
         ? Array.from({ length: playerCount }, (_, i) =>
@@ -971,9 +1033,22 @@ export default function PlayShellPage() {
             <div>Sprint1 需求抽卡；达标后进度归零进入 Sprint2（禁重复需求）</div>
             <div className="muted">绩效 / OKR 计数结转；债与 Bug 重置；系列末定 MVP</div>
           </div>
-          <button type="button" className="primary" onClick={startGame}>
-            开始
-          </button>
+          {lobbyGuide && playMode === "vs_bot" ? (
+            <div className="guide-card guide-card-inline">
+              <p className="guide-step">第 3 / 3 步</p>
+              <p className="guide-line">{STEP3_LINE}</p>
+            </div>
+          ) : null}
+          <div className="guide-actions">
+            <button type="button" className="primary" onClick={startGame}>
+              {lobbyGuide && playMode === "vs_bot" ? STEP3_PRIMARY : "开始"}
+            </button>
+            {lobbyGuide && playMode === "vs_bot" ? (
+              <button type="button" className="ghost" onClick={skipLobbyGuide}>
+                {STEP3_SKIP}
+              </button>
+            ) : null}
+          </div>
         </section>
       </main>
     );
@@ -1043,6 +1118,7 @@ export default function PlayShellPage() {
           {infoTip.text}
         </div>
       )}
+      <CoachTip ctx={coachCtx} blocked={Boolean(infoTip)} />
       {/* 1. Phase bar — 单行 ≤40px；演示折入次要 */}
       <header
         className={`phase-bar ${showForcedUi || crossLineForced ? "busy" : "idle"}`}

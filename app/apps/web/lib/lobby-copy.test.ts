@@ -14,6 +14,7 @@ describe("lobby free-match copy locks", () => {
     expect(assertNoBotCopy(main)).toBe(true);
     expect(assertNoBotCopy(FREE_MATCH_QUEUE_SUB)).toBe(true);
     expect(assertNoBotCopy(FREE_MATCH_LABEL)).toBe(true);
+    expect(assertNoBotCopy("排队入桌 · 无需二次确认")).toBe(true);
     for (const bad of FORBIDDEN_BOT_COPY) {
       expect(main.includes(bad)).toBe(false);
       expect(FREE_MATCH_QUEUE_SUB.includes(bad)).toBe(false);

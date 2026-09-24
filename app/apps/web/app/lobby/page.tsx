@@ -9,6 +9,7 @@ import {
   freeMatchQueueMain,
 } from "../../lib/lobby-copy";
 import { MatchClient } from "../../lib/match-client";
+import { dismissPreferAiHint, takePreferAiHint } from "../../lib/onboarding";
 import { saveOnlineSession } from "../../lib/online-session";
 import { LobbySeatRing, lobbyFromPartial } from "./seat-ring";
 
@@ -34,6 +35,7 @@ function LobbyShellInner() {
   const [selfId, setSelfId] = useState<string | null>(null);
   const [queueStartedAt, setQueueStartedAt] = useState<number | null>(null);
   const [now, setNow] = useState(() => Date.now());
+  const [preferAiHint, setPreferAiHint] = useState<string | null>(null);
 
   const clientRef = useRef<MatchClient | null>(null);
   const displayNameRef = useRef(displayName);
@@ -49,6 +51,10 @@ function LobbyShellInner() {
     const id = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(id);
   }, [status, queueStartedAt]);
+
+  useEffect(() => {
+    setPreferAiHint(takePreferAiHint());
+  }, []);
 
   useEffect(() => {
     return () => {
@@ -190,6 +196,22 @@ function LobbyShellInner() {
           {mode === "match" && "自由匹配"}
         </p>
       </header>
+
+      {preferAiHint && status !== "queue" ? (
+        <p className="guide-toast" role="status">
+          <span>{preferAiHint}</span>
+          <button
+            type="button"
+            className="ghost"
+            onClick={() => {
+              dismissPreferAiHint();
+              setPreferAiHint(null);
+            }}
+          >
+            关闭
+          </button>
+        </p>
+      ) : null}
 
       {status === "queue" ? (
         <section className="match-queue" aria-live="polite">

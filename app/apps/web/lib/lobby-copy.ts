@@ -14,9 +14,13 @@ export const FORBIDDEN_BOT_COPY = [
   "Bot",
   "bot",
   "机器人",
+  "假人",
   "补位",
   "匹配失败",
   "本局含 Bot",
+  "AI玩家",
+  "AI 玩家",
+  "补位机器",
 ] as const;
 
 export function assertNoBotCopy(text: string): boolean {

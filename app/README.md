@@ -13,7 +13,7 @@ app/
 ├── apps/
 │   ├── server/         # match-server（RedQueen V1 WS）
 │   ├── web/            # Next.js 15 前端
-│   └── desktop/        # Electron 壳（S1 占位）
+│   └── desktop/        # Tauri 2 桌面壳（加载现有 web `/play`）
 ├── steam/              # Steamworks 配置（S1 占位）
 ├── tests/
 │   └── integration/    # 联机集成测试（M4 占位）
@@ -55,7 +55,10 @@ workspace 包（`@rs/shared` / `@rs/game-data` / `@rs/rules-engine`）以 **TS �
 ```bash
 pnpm dev:server   # match-server WS @ localhost:8787
 pnpm dev:web      # Next.js @ localhost:3000
+pnpm dev:desktop  # Tauri 2 壳，窗口打开 /play（需本机 WebView）
 ```
+
+桌面壳的 dev / Windows `.msi` / `.exe` 构建见 [`apps/desktop/README.md`](./apps/desktop/README.md)。人机走 web 里现有的本地规则引擎；联机仍连接上面的 match-server，不把权威进程打进壳里。
 
 ## 当前进度
 

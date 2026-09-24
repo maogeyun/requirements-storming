@@ -1,0 +1,22 @@
+[package]
+name = "requirement-storm"
+version = "0.1.0"
+description = "Requirement Storm desktop shell"
+authors = ["Requirement Storm"]
+edition = "2021"
+rust-version = "1.88"
+
+[lib]
+name = "requirement_storm_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+serde_json = "1"
+tauri = { version = "2", features = [] }
+
+[features]
+default = []
+custom-protocol = ["tauri/custom-protocol"]

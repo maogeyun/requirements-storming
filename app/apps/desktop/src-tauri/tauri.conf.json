@@ -1,0 +1,50 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "RequirementStorm",
+  "version": "0.1.0",
+  "identifier": "app.requirementstorm.desktop",
+  "build": {
+    "beforeDevCommand": "pnpm --filter @rs/web dev",
+    "devUrl": "http://localhost:3000",
+    "beforeBuildCommand": "pnpm --filter @rs/web build:desktop",
+    "frontendDist": "../../web/out"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "需求风暴",
+        "url": "play?mode=vs_bot",
+        "width": 1280,
+        "height": 800,
+        "minWidth": 1100,
+        "minHeight": 720,
+        "resizable": true,
+        "center": true,
+        "create": false
+      }
+    ],
+    "security": {
+      "csp": {
+        "default-src": "'self'",
+        "script-src": "'self'",
+        "style-src": "'self' 'unsafe-inline' https://fonts.googleapis.com",
+        "font-src": "'self' data: https://fonts.gstatic.com",
+        "img-src": "'self' data: blob: asset: http://asset.localhost",
+        "connect-src": "'self' ipc: http://ipc.localhost https://ipc.localhost ws: wss: https:"
+      },
+      "devCsp": "default-src 'self' http://localhost:3000 http://127.0.0.1:3000; script-src 'self' 'unsafe-inline' 'unsafe-eval' http://localhost:3000 http://127.0.0.1:3000; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com http://localhost:3000 http://127.0.0.1:3000; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: http://localhost:3000 http://127.0.0.1:3000; connect-src 'self' ipc: http://ipc.localhost https://ipc.localhost http://localhost:3000 ws://localhost:3000 http://127.0.0.1:3000 ws://127.0.0.1:3000 ws: wss: https:"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ]
+  }
+}

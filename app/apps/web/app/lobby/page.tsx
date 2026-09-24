@@ -1,6 +1,6 @@
 "use client";
 
-import type { LobbyState, ServerMessage } from "@rs/shared";
+import type { ClientJoin, LobbyState, ServerMessage } from "@rs/shared";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
@@ -11,6 +11,9 @@ import {
 import { MatchClient } from "../../lib/match-client";
 import { dismissPreferAiHint, takePreferAiHint } from "../../lib/onboarding";
 import { saveOnlineSession } from "../../lib/online-session";
+import { multiplayerAuthErrorCopy } from "../../lib/steam-auth-copy";
+import { fetchSteamSessionTicket } from "../../lib/steam-bridge";
+import { SteamShellChrome } from "../steam-shell-chrome";
 import { LobbySeatRing, lobbyFromPartial } from "./seat-ring";
 
 type LobbyMode = "create" | "join" | "match";
@@ -66,7 +69,10 @@ function LobbyShellInner() {
   function handleServerMessage(message: ServerMessage): void {
     if (message.type === "error") {
       const code = message.error.code;
-      if (code === "ROOM_FULL") {
+      const authCopy = multiplayerAuthErrorCopy(code);
+      if (authCopy) {
+        setInlineError(authCopy);
+      } else if (code === "ROOM_FULL") {
         setInlineError("房间已满");
       } else if (code === "PLAYER_NOT_FOUND") {
         setInlineError("房间不存在或房间码错误");
@@ -103,11 +109,13 @@ function LobbyShellInner() {
     }
   }
 
-  function connectAndSend(build: () => Parameters<MatchClient["send"]>[0]): void {
+  async function connectAndSend(build: () => ClientJoin): Promise<void> {
+    const ticket = await fetchSteamSessionTicket();
+    const message = ticket ? { ...build(), sessionTicket: ticket } : build();
     clientRef.current?.close();
     const client = new MatchClient({
       onMessage: handleServerMessage,
-      onOpen: () => client.send(build()),
+      onOpen: () => client.send(message),
       onError: () => {
         setInlineError("无法连接匹配服务");
         setStatus("idle");
@@ -187,6 +195,7 @@ function LobbyShellInner() {
 
   return (
     <main className="shell lobby-shell">
+      <SteamShellChrome />
       <header className="lobby-header">
         <p className="eyebrow">Requirement Storm</p>
         <h1>需求风暴</h1>

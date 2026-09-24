@@ -6,13 +6,22 @@ import {
   defaultMatchClock,
 } from "./clock";
 import { pickFakeDisplayNames } from "./fake-names";
-import { MatchRoom } from "./match-room";
+import { MatchRoom, type SeatBinding } from "./match-room";
+import { devModeExchanger, type TicketExchanger } from "./steam-auth";
 
 export type EmitFn = (connectionId: string, message: ServerMessage) => void;
 
 const ROOM_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 
-export function generateRoomCode(existing: Set<string>): string {
+export function isPromise<T>(value: T | Promise<T>): value is Promise<T> {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    typeof (value as Promise<T>).then === "function"
+  );
+}
+
+function generateRoomCode(existing: Set<string>): string {
   for (let attempt = 0; attempt < 40; attempt += 1) {
     let code = "";
     for (let i = 0; i < 5; i += 1) {
@@ -31,6 +40,8 @@ interface MatchQueueEntry {
   connectionId: string;
   displayName: string;
   enqueuedAt: number;
+  /** Set after a dev:/Steam ticket exchange. Null in local dev joins. */
+  steamId: string | null;
 }
 
 export interface MatchHubOptions {
@@ -38,6 +49,11 @@ export interface MatchHubOptions {
   clock?: MatchClock;
   /** Override 60s for tests */
   botFillMs?: number;
+  /**
+   * Session-ticket exchanger. Default is dev mode (no Steam client required).
+   * Pass a steam-mode exchanger to require AuthenticateUserTicket.
+   */
+  exchanger?: TicketExchanger;
 }
 
 export class MatchHub {
@@ -48,6 +64,7 @@ export class MatchHub {
   private readonly seed?: number;
   private readonly clock: MatchClock;
   private readonly botFillMs: number;
+  private readonly exchanger: TicketExchanger;
   private matchFillTimer: unknown = null;
 
   constructor(emit: EmitFn, options?: MatchHubOptions) {
@@ -55,6 +72,11 @@ export class MatchHub {
     this.seed = options?.seed;
     this.clock = options?.clock ?? defaultMatchClock;
     this.botFillMs = options?.botFillMs ?? MATCH_BOT_FILL_MS;
+    this.exchanger = options?.exchanger ?? devModeExchanger();
+  }
+
+  get authMode(): "dev" | "steam" {
+    return this.exchanger.mode;
   }
 
   /** Test/observe: current free-match queue depth. */
@@ -83,7 +105,7 @@ export class MatchHub {
     }
 
     if (message.type === "join") {
-      this.handleJoin(connectionId, message);
+      this.beginJoin(connectionId, message);
       return;
     }
 
@@ -136,6 +158,136 @@ export class MatchHub {
     }
     room.onDisconnect(connectionId);
     this.connectionRoom.delete(connectionId);
+  }
+
+  /**
+   * Seat-token reclaim skips a new ticket exchange (disconnect grace).
+   * Otherwise steam mode exchanges `sessionTicket` for a SteamID, then seats.
+   * Dev mode without a `dev:<steamid>` ticket keeps the pre-Steam join path.
+   */
+  private beginJoin(connectionId: string, message: ClientJoin): void {
+    if (message.seatToken && this.reclaimBySeatToken(connectionId, message)) {
+      return;
+    }
+
+    const ticket = message.sessionTicket?.trim() ?? "";
+    const devTicket = ticket.startsWith("dev:");
+    if (this.exchanger.mode === "dev" && !devTicket) {
+      this.routeJoin(connectionId, message, null);
+      return;
+    }
+    if (!ticket) {
+      this.emit(connectionId, {
+        type: "error",
+        error: {
+          code: ErrorCode.AUTH_REQUIRED,
+          message: "Steam session ticket required",
+        },
+      });
+      return;
+    }
+
+    let exchanged: ReturnType<TicketExchanger["exchange"]>;
+    try {
+      exchanged = this.exchanger.exchange(ticket);
+    } catch (err) {
+      this.emitAuthFailed(connectionId, err);
+      return;
+    }
+    if (isPromise(exchanged)) {
+      void exchanged.then(
+        (identity) => this.routeJoin(connectionId, message, identity.steamId),
+        (err: unknown) => this.emitAuthFailed(connectionId, err),
+      );
+      return;
+    }
+    this.routeJoin(connectionId, message, exchanged.steamId);
+  }
+
+  private reclaimBySeatToken(connectionId: string, message: ClientJoin): boolean {
+    const token = message.seatToken;
+    if (!token) return false;
+    const located = this.locateSeatToken(token);
+    if (!located) return false;
+    this.handleJoin(connectionId, {
+      type: "join",
+      mode: "join",
+      roomCode: located.room.roomCode,
+      displayName: message.displayName,
+      seatToken: token,
+      seatCount: message.seatCount,
+    });
+    return true;
+  }
+
+  private routeJoin(
+    connectionId: string,
+    message: ClientJoin,
+    steamId: string | null,
+  ): void {
+    if (steamId) {
+      const existing = this.locateSteamId(steamId);
+      if (existing) {
+        this.handleJoin(connectionId, {
+          type: "join",
+          mode: "join",
+          roomCode: existing.room.roomCode,
+          displayName: message.displayName,
+          seatToken: existing.seat.seatToken,
+          seatCount: message.seatCount,
+        });
+        return;
+      }
+      this.dropOtherQueuedSteamId(steamId, connectionId);
+    }
+
+    this.handleJoin(connectionId, message);
+    if (!steamId) return;
+
+    const code = this.connectionRoom.get(connectionId);
+    if (code) {
+      this.rooms.get(code)?.bindSteamId(connectionId, steamId);
+      return;
+    }
+    const queued = this.matchQueue.find((entry) => entry.connectionId === connectionId);
+    if (queued) queued.steamId = steamId;
+  }
+
+  private emitAuthFailed(connectionId: string, err: unknown): void {
+    const detail = err instanceof Error ? err.message : "";
+    const safe =
+      detail.startsWith("Steam") || detail.startsWith("STEAM_") || detail.startsWith("dev ticket")
+        ? detail
+        : "Steam session ticket rejected";
+    this.emit(connectionId, {
+      type: "error",
+      error: { code: ErrorCode.AUTH_FAILED, message: safe },
+    });
+  }
+
+  private locateSeatToken(token: string): { room: MatchRoom; seat: SeatBinding } | null {
+    for (const room of this.rooms.values()) {
+      const seat = room.seats.find((candidate) => candidate.seatToken === token);
+      if (seat) return { room, seat };
+    }
+    return null;
+  }
+
+  private locateSteamId(steamId: string): { room: MatchRoom; seat: SeatBinding } | null {
+    for (const room of this.rooms.values()) {
+      const seat = room.seats.find((candidate) => candidate.steamId === steamId && !candidate.isBot);
+      if (seat) return { room, seat };
+    }
+    return null;
+  }
+
+  private dropOtherQueuedSteamId(steamId: string, exceptConnectionId: string): void {
+    const idx = this.matchQueue.findIndex(
+      (entry) => entry.steamId === steamId && entry.connectionId !== exceptConnectionId,
+    );
+    if (idx < 0) return;
+    this.matchQueue.splice(idx, 1);
+    this.scheduleMatchFill();
   }
 
   private handleJoin(connectionId: string, message: ClientJoin): void {
@@ -206,6 +358,7 @@ export class MatchHub {
       connectionId,
       displayName,
       enqueuedAt: this.clock.now(),
+      steamId: null,
     });
 
     this.flushHumanMatchBatches();
@@ -274,6 +427,7 @@ export class MatchHub {
         roomCode: code,
         displayName: entry.displayName,
       });
+      if (entry.steamId) room.bindSteamId(entry.connectionId, entry.steamId);
     }
 
     if (botNames.length > 0 && room.phase === "lobby") {

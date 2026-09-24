@@ -32,6 +32,7 @@ import type {
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import { CoachTip } from "../coach-tip";
+import { SteamShellChrome } from "../steam-shell-chrome";
 import {
   STEP3_LINE,
   STEP3_PRIMARY,
@@ -972,6 +973,7 @@ export default function PlayShellPage() {
   if (screen === "setup") {
     return (
       <main className="shell">
+        <SteamShellChrome />
         <header className="hero">
           <p className="eyebrow">Requirement Storm</p>
           <h1>需求风暴</h1>
@@ -1104,6 +1106,7 @@ export default function PlayShellPage() {
         clearCardSelection();
       }}
     >
+      <SteamShellChrome />
       {botFlash && (
         <div className="bot-flash" role="status" aria-live="polite">
           {botFlash}

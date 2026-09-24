@@ -24,6 +24,7 @@ import {
   disconnectGraceRemainingSec,
   roomConfigToGameConfig,
 } from "@rs/shared";
+import { randomBytes } from "node:crypto";
 import { type MatchClock, defaultMatchClock } from "./clock";
 import { isLegalIntent } from "./intent";
 import {
@@ -55,6 +56,11 @@ export interface SeatBinding {
    * Distinct from `isBot` silent-fill — clients may show 托管 for this flag only.
    */
   disconnectHosted: boolean;
+  /**
+   * Server-only SteamID64 after a session ticket is exchanged.
+   * Never copy into LobbyPlayer / PlayerView / presence / any client frame.
+   */
+  steamId: string | null;
 }
 
 /** 联机房间固定满 4 开局（老乔确认：不可不足开局）。 */
@@ -69,18 +75,20 @@ export interface MatchRoomOptions {
   disconnectGraceMs?: number;
 }
 
+/** Opaque reconnect secret. Not a Steam ticket and not a `stub_` placeholder. */
 function newSeatToken(): string {
-  return `stub_${Math.random().toString(36).slice(2, 10)}_${Date.now().toString(36)}`;
+  return `seat_${randomBytes(18).toString("base64url")}`;
 }
 
 function emptySeatFlags(): Pick<
   SeatBinding,
-  "disconnectGraceUntil" | "graceTimer" | "disconnectHosted"
+  "disconnectGraceUntil" | "graceTimer" | "disconnectHosted" | "steamId"
 > {
   return {
     disconnectGraceUntil: null,
     graceTimer: null,
     disconnectHosted: false,
+    steamId: null,
   };
 }
 
@@ -109,6 +117,13 @@ export class MatchRoom {
 
   get hostSeatId(): string | null {
     return this.seats.find((s) => s.isHost)?.seatId ?? null;
+  }
+
+  /** Bind a verified SteamID to the human seat on this connection. Bots are skipped. */
+  bindSteamId(connectionId: string, steamId: string): void {
+    const seat = this.seats.find((s) => s.connectionId === connectionId && !s.isBot);
+    if (!seat) return;
+    seat.steamId = steamId;
   }
 
   /**
@@ -208,7 +223,7 @@ export class MatchRoom {
       return;
     }
 
-    // Reconnect via stub seatToken
+    // Reconnect via seatToken issued after auth (no second ticket exchange).
     if (message.seatToken) {
       const existing = this.seats.find((s) => s.seatToken === message.seatToken);
       if (existing) {

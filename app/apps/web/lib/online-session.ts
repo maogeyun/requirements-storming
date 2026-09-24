@@ -1,4 +1,4 @@
-/** Client session for online seat reconnect (stub seatToken). */
+/** Client session for online seat reconnect (seatToken issued after auth). */
 
 const KEY = "rs.online.seat";
 

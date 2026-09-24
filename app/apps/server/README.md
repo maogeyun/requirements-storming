@@ -6,22 +6,27 @@
 
 | 方向 | `type` | 说明 |
 |------|--------|------|
-| C→S | `join` | `mode`: `create` \| `join` \| `match`；联机固定满 **4** 开局（不可不足开） |
+| C→S | `join` | `mode`: `create` \| `join` \| `match`；可带 `sessionTicket`（hex）。重连只带 `seatToken`。满 **4** 开局 |
 | C→S | `intent` | `{ action: GameAction }`；非法则 `error` |
 | C→S | `resync` | 重拉本座 `view` + 当前 `force` |
 | C→S | `leave` | 离开；局内走断线 grace → Bot 托管（与 WS close 相同） |
-| S→C | `view` | 含 `seatId` / stub `seatToken` / `lobby` 或座位 `view`；可带 `presence` / `reclaimed` |
+| S→C | `view` | 含 `seatId` / `seatToken` / `lobby` 或座位 `view`；可带 `presence` / `reclaimed` |
 | S→C | `force` | 暗标 / C-13 / C-14 强制窗 |
 | S→C | `error` | 含 `ErrorCode`；非法 intent 带 `rejectedAction` |
 
-鉴权 V1：stub `seatToken`（Steam Session Ticket 后补）。主机不可改规则。开局条件：`seated === 4`（不足拒绝）。
+鉴权：Steam Session Ticket → `ISteamUserAuth/AuthenticateUserTicket` → 签发不透明 `seatToken`。主机不可改规则。开局条件：`seated === 4`（不足拒绝）。
+
+- 生产：`RS_STEAM_AUTH=steam`，并设置 `STEAM_WEB_API_KEY`（Publisher Key）与 `STEAM_APP_ID`。没有票据的 create / join / match 返回 `AUTH_REQUIRED`。
+- 本地与 CI 默认是 **dev**（未配置上述密钥时）：不要求 Steam 客户端，建房 / 加入 / 自由匹配 / 45 秒断线顶条保持原样。这不是占位 `stub_` 票据；dev 不会把未校验的 hex 票据当成已交换的 SteamID。
+- 测试可注入 `dev:<17 位 SteamID>`，只在 dev 模式绑定身份，不会请求 Steam。
+- `seatToken` 重连不再次交换票据。同一 SteamID 的新票据会收回原座位。
 
 ### 断线 / 重连 / 超时托管（i-pple）
 
 - 默认 grace **`DISCONNECT_GRACE_MS = 45_000`**（可在 `MatchRoom` 构造时覆盖）。
 - 局内断线：座位保留；`presence` 下发 `graceRemainingSec`；客户端顶条「连接中断 · N 秒内可回」。
 - Grace 到期：该真人座 `disconnectHosted` → 启发式 Bot 代打（复用 `@rs/rules-engine`）；客户端弱提示「本座已托管」。
-- `seatToken` 重连收回座位：清 grace / hosted；`reclaimed: true` 触发一行 toast + 焦点回手牌/强制窗。
+- `seatToken` 重连收回座位：清 grace / hosted；`reclaimed: true` 触发一行 toast + 焦点回手牌/强制窗。Steam 模式下这一步不需要新票据。
 - `presence.hosted` **仅**用于断线托管；自由匹配静默补位 Bot **永不**标 hosted。
 
 ### 自由匹配（i-pple 不泄锁）

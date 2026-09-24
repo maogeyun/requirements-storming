@@ -2,6 +2,7 @@ import { createServer } from "node:http";
 import { WebSocketServer, type WebSocket } from "ws";
 import type { ServerMessage } from "@rs/shared";
 import { MatchHub } from "./match-hub";
+import { createTicketExchanger } from "./steam-auth";
 
 const PORT = Number(process.env.MATCH_SERVER_PORT ?? process.env.PORT ?? 8787);
 
@@ -26,6 +27,7 @@ const hub = new MatchHub(emit, {
   botFillMs: process.env.MATCH_BOT_FILL_MS
     ? Number(process.env.MATCH_BOT_FILL_MS)
     : undefined,
+  exchanger: createTicketExchanger(process.env),
 });
 
 const server = createServer((_req, res) => {
@@ -51,5 +53,7 @@ wss.on("connection", (ws) => {
 
 server.listen(PORT, () => {
   // eslint-disable-next-line no-console
-  console.log(`[match-server] ws://localhost:${PORT}  (RedQueen V1: join/intent/view/force/resync/leave)`);
+  console.log(
+    `[match-server] ws://localhost:${PORT}  (RedQueen V1: join/intent/view/force/resync/leave, auth=${hub.authMode})`,
+  );
 });

@@ -1,0 +1,14 @@
+[[permission]]
+identifier = "allow-steam-status"
+description = "Read Steam init status and the current SteamID."
+commands.allow = ["steam_status"]
+
+[[permission]]
+identifier = "allow-steam-session-ticket"
+description = "Mint a Steam Web API session ticket for match-server auth."
+commands.allow = ["steam_session_ticket"]
+
+[[permission]]
+identifier = "allow-steam-activate-overlay"
+description = "Open the Steam overlay. Does not cover play cards or forced windows."
+commands.allow = ["steam_activate_overlay"]

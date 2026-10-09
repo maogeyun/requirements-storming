@@ -1,0 +1,27 @@
+/**
+ * Workplace palette tokens (locked 2026-10-09).
+ * Handoff only — play surfaces do not reference these variables yet.
+ * Spec: design-tokens/HANDOFF.md
+ */
+:root {
+  --ws-desk: #2C3036;
+  --ws-desk-sheen: #3E444C;
+  --ws-ritual: #14100C;
+  /* Optional. Card base / forced-dialog light outline only. Not required to paint. */
+  --ws-glass: #C5C9CE;
+  --ws-glass-alpha: 0.28;
+  --ws-glass-outline: rgb(197 201 206 / 28%);
+  --ws-action: #F5C518;
+  --ws-metal: #C4A35A;
+  --ws-metal-highlight: #E8D5A3;
+  --ws-score: #E85D04;
+  --ws-status: #6B8F71;
+  --ws-ink: #E8E4D9;
+  --ws-ink-muted: #9A9488;
+  /* Forced overlay/dialog: selected yellow stroke underneath is off, not scrim-dimmed. */
+  --ws-selected-stroke-under-overlay: 0;
+  /* Aliases of locked hexes (P0). Not new colors. */
+  --ws-seat-focus-edge: var(--ws-ink);
+  --ws-card-ink-on-light: var(--ws-desk);
+  --ws-card-face-light: var(--ws-ink);
+}

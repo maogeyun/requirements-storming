@@ -109,6 +109,7 @@ pnpm --filter @rs/web dev
 
 ## 设计文档
 
+- [职场色板 token 交接](./apps/web/design-tokens/HANDOFF.md)（只含锁定色值与遮罩下黄描边验收，未改牌桌像素）
 - [Notion 主策划页](https://app.notion.com/p/389cb94e2e75800ea77ad4933df7915a)
 - [策划案 v1.2](https://app.notion.com/p/00cef5bf58cf4f3a906a216b88cb60f9)
 - [卡表 v1.2](https://app.notion.com/p/7d4b5e221ba84f63b6d44968acecf1e1)

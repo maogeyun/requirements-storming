@@ -1,4 +1,5 @@
 import type { Config } from "tailwindcss";
+import { workplaceColors } from "./design-tokens/workplace-palette";
 
 const config: Config = {
   content: ["./app/**/*.{js,ts,jsx,tsx,mdx}"],
@@ -9,6 +10,8 @@ const config: Config = {
           DEFAULT: "#2563eb",
           dark: "#1d4ed8",
         },
+        /* Locked workplace palette. No play surface uses these classes yet. */
+        ws: workplaceColors,
       },
     },
   },
